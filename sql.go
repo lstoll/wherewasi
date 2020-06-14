@@ -5,8 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
-
-	"github.com/sirupsen/logrus"
 )
 
 type migration struct {
@@ -28,10 +26,10 @@ var migrations = []migration{}
 type Storage struct {
 	db *sql.DB
 
-	log logrus.FieldLogger
+	log logger
 }
 
-func New(ctx context.Context, logger logrus.FieldLogger, db *sql.DB) (*Storage, error) {
+func New(ctx context.Context, logger logger, db *sql.DB) (*Storage, error) {
 	s := &Storage{
 		db:  db,
 		log: logger,

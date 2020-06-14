@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"log"
+	"os"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/sirupsen/logrus"
 )
 
 func TestMigrations(t *testing.T) {
@@ -83,7 +84,7 @@ func setup(t *testing.T) (ctx context.Context, s *Storage) {
 		}
 	}
 
-	s, err = New(ctx, logrus.New(), db)
+	s, err = New(ctx, log.New(os.Stderr, "", log.LstdFlags), db)
 	if err != nil {
 		t.Fatal(err)
 	}
