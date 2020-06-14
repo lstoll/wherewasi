@@ -73,10 +73,13 @@ func TestMigrations(t *testing.T) {
 func setup(t *testing.T) (ctx context.Context, s *Storage) {
 	ctx = context.Background()
 
-	db, err := sql.Open("sqlite3", "file:test.db?cache=shared&mode=memory")
+	connStr := "file:test.db?cache=shared&mode=memory"
+
+	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer db.Close()
 
 	for _, table := range []string{} {
 		if _, err := db.Exec(`drop table if exists ` + table); err != nil {
@@ -84,7 +87,7 @@ func setup(t *testing.T) (ctx context.Context, s *Storage) {
 		}
 	}
 
-	s, err = New(ctx, log.New(os.Stderr, "", log.LstdFlags), db)
+	s, err = New(ctx, log.New(os.Stderr, "", log.LstdFlags), connStr)
 	if err != nil {
 		t.Fatal(err)
 	}

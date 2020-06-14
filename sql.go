@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type migration struct {
@@ -29,7 +31,12 @@ type Storage struct {
 	log logger
 }
 
-func New(ctx context.Context, logger logger, db *sql.DB) (*Storage, error) {
+func New(ctx context.Context, logger logger, connStr string) (*Storage, error) {
+	db, err := sql.Open("sqlite3", connStr)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Storage{
 		db:  db,
 		log: logger,
