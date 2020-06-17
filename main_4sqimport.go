@@ -4,8 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
+	"net/url"
+	"os"
+	"strconv"
+	"time"
 
+	"github.com/cenkalti/backoff/v4"
 	"github.com/davecgh/go-spew/spew"
 )
 
@@ -13,43 +19,142 @@ type fsqImportCommand struct {
 	log logger
 
 	oauth2token string
+
+	inFile  string
+	outFile string
 }
 
 func (f *fsqImportCommand) run(ctx context.Context) error {
 	f.log.Print("Starting foursquare checkout export")
 
-	hcl := http.DefaultClient
+	var checkins []fsqCheckin
 
-	// https://developer.foursquare.com/docs/api-reference/users/checkins/#parameters
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.foursquare.com/v2/users/self/checkins?limit=250&oauth_token=%s&v=20131026&offset=%s", f.oauth2token, "0"), nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := hcl.Do(req)
-	if err != nil {
-		return err
-	}
-
-	fsResp := fsqAPICheckinsResponse{}
-
-	if err := json.NewDecoder(resp.Body).Decode(&fsResp); err != nil {
-		return err
-	}
-
-	if fsResp.Meta.Code != 200 {
-		return fmt.Errorf("unexpected code from fsq api: %d", fsResp.Meta.Code)
-	}
-
-	for _, i := range fsResp.Response.Checkins.Items {
-		c := fsqCheckin{}
-		if err := json.Unmarshal(i, &c); err != nil {
+	if f.inFile != "" {
+		f, err := os.Open(f.inFile)
+		if err != nil {
 			return err
 		}
-		spew.Dump(c)
+		defer f.Close()
+		if err := json.NewDecoder(f).Decode(&checkins); err != nil {
+			return err
+		}
+	} else {
+		var err error
+		checkins, err = f.fetchCheckins(ctx, time.Time{})
+		if err != nil {
+			return err
+		}
+	}
+
+	f.log.Printf("Read %d checkins", len(checkins))
+
+	if f.outFile != "" {
+		// dump just the raw in an array, ignore our parsing
+		var od []json.RawMessage
+		for _, c := range checkins {
+			od = append(od, c.raw)
+		}
+		f, err := os.Create(f.outFile)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		if err := json.NewEncoder(f).Encode(od); err != nil {
+			return err
+		}
+	} else {
+		for _, c := range checkins {
+			spew.Dump(c)
+		}
 	}
 
 	return nil
+}
+
+func (f *fsqImportCommand) fetchCheckins(ctx context.Context, since time.Time) ([]fsqCheckin, error) {
+	var ret []fsqCheckin
+
+	hcl := http.DefaultClient
+
+	// https://developer.foursquare.com/docs/api-reference/users/checkins/#parameters
+	q := url.Values{}
+	q.Set("v", "20190101")
+	q.Set("oauth_token", f.oauth2token)
+	q.Set("sort", "newestfirst")
+	q.Set("limit", "250") // 250 max?
+	if !since.IsZero() {
+		q.Set("afterTimestamp", strconv.FormatInt(since.UTC().Unix(), 10))
+	}
+
+	var offset int
+
+	for {
+		f.log.Printf("Fetching items after %s from offset %d", since.String(), offset)
+
+		q.Set("offset", strconv.Itoa(offset))
+
+		req, err := http.NewRequest("GET", fmt.Sprintf("https://api.foursquare.com/v2/users/self/checkins?%s", q.Encode()), nil)
+		if err != nil {
+			return nil, err
+		}
+
+		fsResp := fsqAPICheckinsResponse{}
+
+		apiCall := func() error {
+			resp, err := hcl.Do(req)
+			if err != nil {
+				return err
+			}
+
+			b, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+
+			if err := json.Unmarshal(b, &fsResp); err != nil {
+				return &backoff.PermanentError{Err: err}
+			}
+
+			if fsResp.Meta.Code != 200 {
+				return fmt.Errorf("unexpected code from fsq api: %d\n\n%s", fsResp.Meta.Code, string(b))
+			}
+
+			return nil
+		}
+		bo := backoff.NewExponentialBackOff()
+		// bo.MaxElapsedTime = 15 * time.Minute
+		bo.MaxElapsedTime = 0
+		bo.InitialInterval = 30 * time.Second
+		nf := func(err error, d time.Duration) {
+			f.log.Printf("Backing off for %s, received error %v", d.String(), err)
+		}
+		if err := backoff.RetryNotify(apiCall, bo, nf); err != nil {
+			// Handle error.
+			return nil, err
+		}
+
+		fetchCount := len(fsResp.Response.Checkins.Items)
+		if fetchCount == 0 {
+			if len(ret) != fsResp.Response.Checkins.Count {
+				f.log.Printf("WARN consistency error: fetched %d of %d records", len(ret), fsResp.Response.Checkins.Count)
+				// return nil, fmt.Errorf("consistency error: fetched %d of %d records", len(ret), fsResp.Response.Checkins.Count)
+			}
+			return ret, nil
+		}
+
+		f.log.Printf("Fetched %d of %d items", offset+fetchCount, fsResp.Response.Checkins.Count)
+
+		for _, i := range fsResp.Response.Checkins.Items {
+			c := fsqCheckin{}
+			if err := json.Unmarshal(i, &c); err != nil {
+				return nil, err
+			}
+			c.raw = i
+			ret = append(ret, c)
+		}
+
+		offset = offset + fetchCount - 1
+	}
 }
 
 type fsqAPICheckinsResponse struct {
@@ -121,6 +226,9 @@ type fsqCheckin struct {
 	Overlaps interface{} `json:"overlaps"`
 	// total and scores for this checkin
 	Score interface{} `json:"score"`
+
+	// Internal use. Track raw data
+	raw json.RawMessage
 }
 
 type fsqEntities struct {

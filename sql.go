@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -23,7 +24,44 @@ type migration struct {
 	AfterFunc func(context.Context, *sql.Tx) error
 }
 
-var migrations = []migration{}
+var migrations = []migration{
+	{
+		Idx: 202006141339,
+		SQL: `
+			create table checkins (
+				id text primary key,
+				fsq_raw text,
+				fsq_id text unique,
+				created_at text default (datetime('now'))
+			);
+
+			create table people (
+				id text primary key,
+				firstname text,
+				lastname text,
+				fsq_id text unique,
+				email text, -- unique would be nice, but imports don't have it
+				created_at text default (datetime('now'))
+			);
+
+			-- venue represents a visitable place/business
+			create table venues (
+				id text primary key,
+				name text,
+				fsq_id text unique,
+				created_at text default (datetime('now'))
+			);
+
+			-- location represent a physical place
+			create table locations (
+				id text primary key,
+				name text,
+				fsq_id text unique,
+				created_at text default (datetime('now'))
+			);
+		`,
+	},
+}
 
 type Storage struct {
 	db *sql.DB
@@ -64,7 +102,8 @@ func (s *Storage) migrate(ctx context.Context) error {
 		sortMigrations(migrations)
 
 		for _, mig := range migrations {
-			err := tx.QueryRowContext(ctx, `select from migrations where idx = $1;`, mig.Idx).Scan()
+			var idx int
+			err := tx.QueryRowContext(ctx, `select idx from migrations where idx = $1;`, mig.Idx).Scan(&idx)
 			if err == nil {
 				// selected fine so we've already inserted migration, next
 				// please.
@@ -79,7 +118,7 @@ func (s *Storage) migrate(ctx context.Context) error {
 				return err
 			}
 
-			if _, err := tx.ExecContext(ctx, `insert into migrations (idx, at) values ($1, now());`, mig.Idx); err != nil {
+			if _, err := tx.ExecContext(ctx, `insert into migrations (idx, at) values ($1, datetime('now'));`, mig.Idx); err != nil {
 				return err
 			}
 		}
@@ -126,4 +165,8 @@ func (s *Storage) execTx(ctx context.Context, f func(ctx context.Context, tx *sq
 
 func sortMigrations(in []migration) {
 	sort.Slice(in, func(i, j int) bool { return in[i].Idx < in[j].Idx })
+}
+
+func newDBID() string {
+	return uuid.New().String()
 }

@@ -12,7 +12,7 @@ import (
 )
 
 func TestMigrations(t *testing.T) {
-	ctx, s := setup(t)
+	ctx, s := setupDB(t)
 
 	var seen []int
 	for _, m := range migrations {
@@ -70,7 +70,7 @@ func TestMigrations(t *testing.T) {
 	}
 }
 
-func setup(t *testing.T) (ctx context.Context, s *Storage) {
+func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	ctx = context.Background()
 
 	connStr := "file:test.db?cache=shared&mode=memory"
@@ -80,12 +80,6 @@ func setup(t *testing.T) (ctx context.Context, s *Storage) {
 		t.Fatal(err)
 	}
 	defer db.Close()
-
-	for _, table := range []string{} {
-		if _, err := db.Exec(`drop table if exists ` + table); err != nil {
-			t.Fatal(err)
-		}
-	}
 
 	s, err = New(ctx, log.New(os.Stderr, "", log.LstdFlags), connStr)
 	if err != nil {

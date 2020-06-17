@@ -30,6 +30,9 @@ func main() {
 
 		fs := flag.NewFlagSet("4sqimport", flag.ExitOnError)
 		fs.StringVar(&cmd.oauth2token, "api-key", getEnvDefault("FOURSQUARE_API_KEY", ""), "Token to authenticate to foursquare API with. https://your-foursquare-oauth-token.glitch.me")
+		fs.StringVar(&cmd.inFile, "infile", "", "If set, data will be read from this path rather than via the foursquare API")
+		fs.StringVar(&cmd.outFile, "outfile", "", "If set, data will be written to this path rather than the database")
+
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
 		}
