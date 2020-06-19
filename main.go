@@ -20,6 +20,8 @@ func main() {
 		parseIdx = 2
 	}
 
+	var ()
+
 	switch command {
 	case "serve":
 		l.Fatal("todo")
@@ -28,10 +30,11 @@ func main() {
 			log: l,
 		}
 
+		var dbPath string
+
 		fs := flag.NewFlagSet("4sqimport", flag.ExitOnError)
 		fs.StringVar(&cmd.oauth2token, "api-key", getEnvDefault("FOURSQUARE_API_KEY", ""), "Token to authenticate to foursquare API with. https://your-foursquare-oauth-token.glitch.me")
-		fs.StringVar(&cmd.inFile, "infile", "", "If set, data will be read from this path rather than via the foursquare API")
-		fs.StringVar(&cmd.outFile, "outfile", "", "If set, data will be written to this path rather than the database")
+		fs.StringVar(&dbPath, "db", "db/wherewasi.db", "Path to database")
 
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
@@ -48,6 +51,13 @@ func main() {
 			fs.Usage()
 			os.Exit(1)
 		}
+
+		st, err := New(ctx, l, fmt.Sprintf("file:%s?cache=shared", dbPath))
+		if err != nil {
+			l.Fatalf("creating storage: %v", err)
+		}
+
+		cmd.storage = st
 
 		if err := cmd.run(ctx); err != nil {
 			l.Fatal(err.Error())

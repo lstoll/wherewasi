@@ -7,12 +7,10 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
-	"github.com/davecgh/go-spew/spew"
 )
 
 type fsqImportCommand struct {
@@ -20,60 +18,32 @@ type fsqImportCommand struct {
 
 	oauth2token string
 
-	inFile  string
-	outFile string
+	storage *Storage
 }
 
 func (f *fsqImportCommand) run(ctx context.Context) error {
 	f.log.Print("Starting foursquare checkout export")
 
-	var checkins []fsqCheckin
-
-	if f.inFile != "" {
-		f, err := os.Open(f.inFile)
-		if err != nil {
-			return err
+	bf := func(batch []fsqCheckin) error {
+		for _, ci := range batch {
+			id, err := f.storage.Upsert4sqCheckin(ctx, ci)
+			if err != nil {
+				return err
+			}
+			f.log.Printf("Upserted %s", id)
 		}
-		defer f.Close()
-		if err := json.NewDecoder(f).Decode(&checkins); err != nil {
-			return err
-		}
-	} else {
-		var err error
-		checkins, err = f.fetchCheckins(ctx, time.Time{})
-		if err != nil {
-			return err
-		}
+		return nil
 	}
 
-	f.log.Printf("Read %d checkins", len(checkins))
-
-	if f.outFile != "" {
-		// dump just the raw in an array, ignore our parsing
-		var od []json.RawMessage
-		for _, c := range checkins {
-			od = append(od, c.raw)
-		}
-		f, err := os.Create(f.outFile)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		if err := json.NewEncoder(f).Encode(od); err != nil {
-			return err
-		}
-	} else {
-		for _, c := range checkins {
-			spew.Dump(c)
-		}
+	var err error
+	if err = f.fetchCheckins(ctx, time.Time{}, bf); err != nil {
+		return err
 	}
 
 	return nil
 }
 
-func (f *fsqImportCommand) fetchCheckins(ctx context.Context, since time.Time) ([]fsqCheckin, error) {
-	var ret []fsqCheckin
-
+func (f *fsqImportCommand) fetchCheckins(ctx context.Context, since time.Time, batchHandler func([]fsqCheckin) error) error {
 	hcl := http.DefaultClient
 
 	// https://developer.foursquare.com/docs/api-reference/users/checkins/#parameters
@@ -81,21 +51,21 @@ func (f *fsqImportCommand) fetchCheckins(ctx context.Context, since time.Time) (
 	q.Set("v", "20190101")
 	q.Set("oauth_token", f.oauth2token)
 	q.Set("sort", "newestfirst")
-	q.Set("limit", "250") // 250 max?
+	q.Set("limit", "50") // 250 seems to be max, but bigger than 250 gets lots of 500 errors
 	if !since.IsZero() {
 		q.Set("afterTimestamp", strconv.FormatInt(since.UTC().Unix(), 10))
 	}
 
-	var offset int
+	var fetched int
 
 	for {
-		f.log.Printf("Fetching items after %s from offset %d", since.String(), offset)
+		q.Set("offset", strconv.Itoa(fetched))
 
-		q.Set("offset", strconv.Itoa(offset))
+		f.log.Printf("Fetching items after %s from offset %d", since.String(), fetched)
 
 		req, err := http.NewRequest("GET", fmt.Sprintf("https://api.foursquare.com/v2/users/self/checkins?%s", q.Encode()), nil)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		fsResp := fsqAPICheckinsResponse{}
@@ -130,30 +100,34 @@ func (f *fsqImportCommand) fetchCheckins(ctx context.Context, since time.Time) (
 		}
 		if err := backoff.RetryNotify(apiCall, bo, nf); err != nil {
 			// Handle error.
-			return nil, err
+			return err
 		}
 
 		fetchCount := len(fsResp.Response.Checkins.Items)
 		if fetchCount == 0 {
-			if len(ret) != fsResp.Response.Checkins.Count {
-				f.log.Printf("WARN consistency error: fetched %d of %d records", len(ret), fsResp.Response.Checkins.Count)
-				// return nil, fmt.Errorf("consistency error: fetched %d of %d records", len(ret), fsResp.Response.Checkins.Count)
+			if fetched != fsResp.Response.Checkins.Count {
+				f.log.Printf("WARN consistency error: fetched %d of %d records", fetched, fsResp.Response.Checkins.Count)
 			}
-			return ret, nil
+			return nil
 		}
 
-		f.log.Printf("Fetched %d of %d items", offset+fetchCount, fsResp.Response.Checkins.Count)
+		f.log.Printf("Fetched %d out of %d total ", fetched+fetchCount, fsResp.Response.Checkins.Count)
 
+		var batch []fsqCheckin
 		for _, i := range fsResp.Response.Checkins.Items {
 			c := fsqCheckin{}
 			if err := json.Unmarshal(i, &c); err != nil {
-				return nil, err
+				return err
 			}
 			c.raw = i
-			ret = append(ret, c)
+			batch = append(batch, c)
 		}
 
-		offset = offset + fetchCount - 1
+		if err := batchHandler(batch); err != nil {
+			return fmt.Errorf("calling batch handler: %v", err)
+		}
+
+		fetched = fetched + fetchCount
 	}
 }
 
