@@ -13,7 +13,7 @@ import (
 	"github.com/cenkalti/backoff/v4"
 )
 
-type fsqImportCommand struct {
+type fsqSyncCommand struct {
 	log logger
 
 	oauth2token string
@@ -21,7 +21,7 @@ type fsqImportCommand struct {
 	storage *Storage
 }
 
-func (f *fsqImportCommand) run(ctx context.Context) error {
+func (f *fsqSyncCommand) run(ctx context.Context) error {
 	f.log.Print("Starting foursquare checkout export")
 
 	bf := func(batch []fsqCheckin) error {
@@ -43,7 +43,7 @@ func (f *fsqImportCommand) run(ctx context.Context) error {
 	return nil
 }
 
-func (f *fsqImportCommand) fetchCheckins(ctx context.Context, since time.Time, batchHandler func([]fsqCheckin) error) error {
+func (f *fsqSyncCommand) fetchCheckins(ctx context.Context, since time.Time, batchHandler func([]fsqCheckin) error) error {
 	hcl := http.DefaultClient
 
 	// https://developer.foursquare.com/docs/api-reference/users/checkins/#parameters

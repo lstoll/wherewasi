@@ -81,7 +81,7 @@ func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	}
 	defer db.Close()
 
-	s, err = New(ctx, log.New(os.Stderr, "", log.LstdFlags), connStr)
+	s, err = newStorage(ctx, log.New(os.Stderr, "", log.LstdFlags), connStr)
 	if err != nil {
 		t.Fatal(err)
 	}

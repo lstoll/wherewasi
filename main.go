@@ -20,25 +20,24 @@ func main() {
 		parseIdx = 2
 	}
 
-	var ()
+	base := &baseCommand{}
 
 	switch command {
 	case "serve":
 		l.Fatal("todo")
-	case "4sqimport":
-		cmd := fsqImportCommand{
+	case "4sqsync":
+		cmd := fsqSyncCommand{
 			log: l,
 		}
 
-		var dbPath string
-
-		fs := flag.NewFlagSet("4sqimport", flag.ExitOnError)
+		fs := flag.NewFlagSet("4sqsync", flag.ExitOnError)
+		base.AddFlags(fs)
 		fs.StringVar(&cmd.oauth2token, "api-key", getEnvDefault("FOURSQUARE_API_KEY", ""), "Token to authenticate to foursquare API with. https://your-foursquare-oauth-token.glitch.me")
-		fs.StringVar(&dbPath, "db", "db/wherewasi.db", "Path to database")
 
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
 		}
+		base.Parse(ctx, l)
 
 		var errs []string
 
@@ -52,12 +51,7 @@ func main() {
 			os.Exit(1)
 		}
 
-		st, err := New(ctx, l, fmt.Sprintf("file:%s?cache=shared", dbPath))
-		if err != nil {
-			l.Fatalf("creating storage: %v", err)
-		}
-
-		cmd.storage = st
+		cmd.storage = base.storage
 
 		if err := cmd.run(ctx); err != nil {
 			l.Fatal(err.Error())
@@ -80,4 +74,38 @@ type logger interface {
 	Fatalf(format string, v ...interface{})
 	Print(v ...interface{})
 	Printf(format string, v ...interface{})
+}
+
+type baseCommand struct {
+	storage *Storage
+
+	dbPath string
+
+	fs *flag.FlagSet
+}
+
+func (b *baseCommand) AddFlags(fs *flag.FlagSet) {
+	fs.StringVar(&b.dbPath, "db", "db/wherewasi.db", "path to database")
+	b.fs = fs
+}
+
+// Parse is called after the flags are parsed, to set things up
+func (b *baseCommand) Parse(ctx context.Context, logger logger) {
+	var errs []string
+
+	if b.dbPath == "" {
+		errs = append(errs, "db required")
+	}
+
+	if len(errs) > 0 {
+		fmt.Printf("%s\n", strings.Join(errs, ", "))
+		b.fs.Usage()
+		os.Exit(1)
+	}
+
+	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?cache=shared", b.dbPath))
+	if err != nil {
+		logger.Fatalf("creating storage: %v", err)
+	}
+	b.storage = st
 }

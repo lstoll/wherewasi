@@ -69,7 +69,7 @@ type Storage struct {
 	log logger
 }
 
-func New(ctx context.Context, logger logger, connStr string) (*Storage, error) {
+func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, error) {
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
 		return nil, err
