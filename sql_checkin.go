@@ -114,6 +114,79 @@ func (s *Storage) Sync4sqUsers(ctx context.Context) error {
 	return txErr
 }
 
+// Sync4sqVenues finds all foursquare checkins in the DB, and ensures there are
+// up-to-date venue entries for them.
+func (s *Storage) Sync4sqVenues(ctx context.Context) error {
+	txErr := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		// run against all checkins
+		rows, err := tx.QueryContext(ctx,
+			`select id, fsq_raw from checkins where fsq_id is not null`)
+		if err != nil {
+			return fmt.Errorf("getting checkins: %v", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				checkinID string
+				cijson    string
+			)
+			if err := rows.Scan(&checkinID, &cijson); err != nil {
+				return fmt.Errorf("scanning row: %v", err)
+			}
+			fsq := fsqCheckin{}
+			if err := json.Unmarshal([]byte(cijson), &fsq); err != nil {
+				return fmt.Errorf("unmarshaling checkin: %v", err)
+			}
+
+			fv := fsq.Venue
+			var cgry fsqCategories
+			for _, c := range fv.Categories {
+				if c.Primary {
+					cgry = c
+				}
+			}
+
+			// get existing or new ID
+			var venueID string
+
+			if err := tx.QueryRowContext(ctx, `select id from venues where fsq_id=$1`, fv.ID).Scan(&venueID); err != nil {
+				if err != sql.ErrNoRows {
+					return fmt.Errorf("checking for existing venue ID: %v", err)
+				}
+				// no record, create a new ID
+				venueID = newDBID()
+			}
+
+			_, err := tx.ExecContext(ctx, `
+				insert into venues(id, fsq_id, name, lat, long, category, friendly_address) values (?, ?, ?, ?, ?, ?, ?)
+				on conflict(fsq_id) do update set name = ?, lat = ?, long = ?, category = ?, friendly_address = ?
+				where fsq_id=?`,
+				venueID, fv.ID, fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.FormattedAddress[0],
+				fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.FormattedAddress[0],
+				fv.ID,
+			)
+			if err != nil {
+				return fmt.Errorf("upserting venue %s: %v", fv.Name, err)
+			}
+
+			_, err = tx.ExecContext(ctx, `
+				update checkins set venue_id=? where id=?`,
+				venueID, checkinID,
+			)
+			if err != nil {
+				return fmt.Errorf("updating checkin venue ID %s: %v", fv.Name, err)
+			}
+
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("rows err: %v", err)
+		}
+		return nil
+
+	})
+	return txErr
+}
+
 func (s *Storage) Last4sqCheckinTime(ctx context.Context) (time.Time, error) {
 	var latestCheckin *time.Time
 

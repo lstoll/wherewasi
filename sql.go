@@ -152,6 +152,41 @@ var migrations = []migration{
 		drop table if exists checkin_with;
 		`,
 	},
+	{
+		Idx: 2020062021325,
+		SQL: `
+		create table venues_new (
+			id text primary key,
+			name text,
+			fsq_id text unique,
+			lat integer,
+			long integer,
+			category text,
+			friendly_address text,
+			created_at datetime default (datetime('now'))
+		);
+
+		insert into venues_new(id, fsq_id, name) select id, fsq_id, name from venues;
+
+		drop table if exists venues;
+		alter table venues_new rename to venues;
+
+		create table checkins_new (
+			id text primary key,
+			fsq_raw text,
+			fsq_id text unique,
+			created_at datetime default (datetime('now')),
+			checkin_time datetime,
+			checkin_time_offset integer,
+			venue_id text,
+			foreign key(venue_id) references venue(id)
+		);
+		insert into checkins_new (id, fsq_raw, fsq_id, created_at, checkin_time, checkin_time_offset) select id, fsq_raw, fsq_id, created_at, checkin_time, checkin_time_offset from checkins;
+
+		drop table if exists checkins;
+		alter table checkins_new rename to checkins;
+		`,
+	},
 }
 
 type Storage struct {
