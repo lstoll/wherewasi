@@ -113,6 +113,45 @@ var migrations = []migration{
 			return nil
 		},
 	},
+	{
+		Idx: 202006200953,
+		SQL: `
+		create table checkin_with (
+			checkin_id text,
+			user_id text,
+			unique(checkin_id, user_id) -- doesn't make sense to have more than one
+		);
+
+		-- sqlite can't drop column, so create new table
+
+		create table people_new (
+			id text primary key,
+			name text,
+			fsq_id text unique,
+			email text, -- unique would be nice, but imports don't have it
+			created_at datetime default (datetime('now'))
+		);
+
+		insert into people_new select id, firstname || ' ' || lastname as name, fsq_id, email, created_at from people;
+
+		drop table if exists people;
+		alter table people_new rename to people;
+		`,
+	},
+	{
+		Idx: 202006201039,
+		SQL: `
+		create table checkin_people (
+			checkin_id text,
+			person_id text,
+			unique(checkin_id, person_id) -- doesn't make sense to have more than one
+		);
+
+		insert into checkin_people select checkin_id, user_id as person_id from checkin_with;
+
+		drop table if exists checkin_with;
+		`,
+	},
 }
 
 type Storage struct {

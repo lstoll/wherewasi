@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -36,6 +37,81 @@ where fsq_id=$9`,
 	}
 
 	return checkin.ID, nil
+}
+
+// Sync4sqUsers finds all foursquare checkins in the DB, and ensures there are
+// up-to-date user entries for them. Also denormalizes the checkin with
+// information in to the database record.
+func (s *Storage) Sync4sqUsers(ctx context.Context) error {
+	txErr := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
+		// run against all checkins
+		rows, err := tx.QueryContext(ctx,
+			`select id, fsq_raw from checkins where fsq_id is not null`)
+		if err != nil {
+			return fmt.Errorf("getting checkins: %v", err)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var (
+				checkinID string
+				cijson    string
+			)
+			if err := rows.Scan(&checkinID, &cijson); err != nil {
+				return fmt.Errorf("scanning row: %v", err)
+			}
+			fsq := fsqCheckin{}
+			if err := json.Unmarshal([]byte(cijson), &fsq); err != nil {
+				return fmt.Errorf("unmarshaling checkin: %v", err)
+			}
+
+			for _, with := range fsq.With {
+				fullName := fmt.Sprintf("%s %s", with.FirstName, with.LastName)
+
+				// try and get the person, to see if we have an existing ID. If
+				// we do use that for linkage, if we don't generate a new ID for
+				// the upserted record
+				var (
+					personID string
+				)
+				if err := tx.QueryRowContext(ctx, `select id from people where fsq_id=$1`, with.ID).Scan(&personID); err != nil {
+					if err != sql.ErrNoRows {
+						return fmt.Errorf("checking for existing person ID: %v", err)
+					}
+					// no record, create a new ID
+					personID = newDBID()
+				}
+
+				// upsert the person, to ensure their data is up to date regardless
+				_, err := tx.ExecContext(ctx, `
+					insert into people(id, fsq_id, name) values ($1, $2, $3)
+					on conflict(fsq_id) do update set name = $4
+					where fsq_id=$5`,
+					personID, with.ID, fullName,
+					fullName,
+					with.ID,
+				)
+				if err != nil {
+					return fmt.Errorf("upserting person %s: %v", fullName, err)
+				}
+
+				// upsert the linkage
+				_, err = tx.ExecContext(ctx, `
+				insert into checkin_people(checkin_id, person_id) values ($1, $2)
+				on conflict do nothing`,
+					checkinID, personID,
+				)
+				if err != nil {
+					return fmt.Errorf("linking %s to checkin %s: %v", fullName, checkinID, err)
+				}
+			}
+		}
+		if err := rows.Err(); err != nil {
+			return fmt.Errorf("rows err: %v", err)
+		}
+		return nil
+
+	})
+	return txErr
 }
 
 func (s *Storage) Last4sqCheckinTime(ctx context.Context) (time.Time, error) {

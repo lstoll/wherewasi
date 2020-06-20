@@ -51,6 +51,11 @@ func (f *fsqSyncCommand) run(ctx context.Context) error {
 		return err
 	}
 
+	f.log.Print("Syncing Foursquare checking user information")
+	if err := f.storage.Sync4sqUsers(ctx); err != nil {
+		return fmt.Errorf("syncing users: %v", err)
+	}
+
 	return nil
 }
 
