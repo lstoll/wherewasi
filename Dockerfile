@@ -14,7 +14,7 @@ RUN go install ./...
 FROM debian:buster
 
 RUN apt-get update && \
-    apt-get install -y sqlite3 libspatialite7
+    apt-get install -y sqlite3 libspatialite7 ca-certificates
 
 COPY --from=build /go/bin/wherewasi /usr/bin/
 
