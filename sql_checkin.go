@@ -158,11 +158,11 @@ func (s *Storage) Sync4sqVenues(ctx context.Context) error {
 			}
 
 			_, err := tx.ExecContext(ctx, `
-				insert into venues(id, fsq_id, name, lat, long, category, friendly_address) values (?, ?, ?, ?, ?, ?, ?)
-				on conflict(fsq_id) do update set name = ?, lat = ?, long = ?, category = ?, friendly_address = ?
+				insert into venues(id, fsq_id, name, lat, lng, category, street_address, city, state, postal_code, country, country_code) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				on conflict(fsq_id) do update set name = ?, lat = ?, lng = ?, category = ?, street_address = ?, city = ?, state = ?, postal_code = ?, country = ?, country_code = ?
 				where fsq_id=?`,
-				venueID, fv.ID, fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.FormattedAddress[0],
-				fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.FormattedAddress[0],
+				venueID, fv.ID, fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.Address, fv.Location.City, fv.Location.State, fv.Location.PostalCode, fv.Location.Country, fv.Location.Cc,
+				fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.Address, fv.Location.City, fv.Location.State, fv.Location.PostalCode, fv.Location.Country, fv.Location.Cc,
 				fv.ID,
 			)
 			if err != nil {

@@ -187,6 +187,32 @@ var migrations = []migration{
 		alter table checkins_new rename to checkins;
 		`,
 	},
+	{
+		Idx: 2020062021404,
+		SQL: `
+		create table venues_new (
+			id text primary key,
+			name text,
+			fsq_id text unique,
+			lat integer,
+			lng integer,
+			category text,
+			street_address text,
+			city text,
+			state text,
+			postal_code text,
+			country text,
+			country_code text,
+			created_at datetime default (datetime('now'))
+		);
+
+		insert into venues_new(id, name, fsq_id, lat, lng, category, created_at)
+			select id, name, fsq_id, lat, long, category, created_at from venues;
+
+		drop table if exists venues;
+		alter table venues_new rename to venues;
+		`,
+	},
 }
 
 type Storage struct {
