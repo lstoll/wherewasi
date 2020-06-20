@@ -2,12 +2,20 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"strings"
+
+	"github.com/mattn/go-sqlite3"
 )
+
+func init() {
+	registerSpatiaLite()
+}
 
 func main() {
 	ctx := context.Background()
@@ -103,9 +111,37 @@ func (b *baseCommand) Parse(ctx context.Context, logger logger) {
 		os.Exit(1)
 	}
 
-	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?cache=shared", b.dbPath))
+	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?cache=shared&_foreign_keys=on", b.dbPath))
 	if err != nil {
 		logger.Fatalf("creating storage: %v", err)
 	}
 	b.storage = st
+}
+
+func registerSpatiaLite() {
+	exts := map[string]string{}
+
+	if runtime.GOOS == "linux" {
+		// exts["libspatialite.so.7"] = "spatialite_init_ex"
+	} else if runtime.GOOS == "darwin" {
+		// Disabling for now, throws
+		// [signal SIGFPE: floating-point exception code=0x7 addr=0x6d65426 pc=0x6d65426]
+
+		// exts["mod_spatialite"] = "sqlite3_modspatialite_init"
+		_ = struct{}{}
+	}
+
+	sql.Register("spatialite", &sqlite3.SQLiteDriver{
+		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
+			if len(exts) > 0 {
+				for l, e := range exts {
+					if err := conn.LoadExtension(l, e); err == nil {
+						return nil
+					}
+				}
+				return fmt.Errorf("loading spatialite failed. make sure libraries are installed")
+			}
+			return nil
+		},
+	})
 }

@@ -179,7 +179,7 @@ var migrations = []migration{
 			checkin_time datetime,
 			checkin_time_offset integer,
 			venue_id text,
-			foreign key(venue_id) references venue(id)
+			foreign key(venue_id) references venues(id)
 		);
 		insert into checkins_new (id, fsq_raw, fsq_id, created_at, checkin_time, checkin_time_offset) select id, fsq_raw, fsq_id, created_at, checkin_time, checkin_time_offset from checkins;
 
@@ -222,9 +222,9 @@ type Storage struct {
 }
 
 func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, error) {
-	db, err := sql.Open("sqlite3", connStr)
+	db, err := sql.Open("spatialite", connStr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening DB: %v", err)
 	}
 
 	s := &Storage{

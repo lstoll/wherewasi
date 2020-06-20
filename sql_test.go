@@ -73,7 +73,7 @@ func TestMigrations(t *testing.T) {
 func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	ctx = context.Background()
 
-	connStr := "file:test.db?cache=shared&mode=memory"
+	connStr := "file:test.db?cache=shared&mode=memory&_foreign_keys=on"
 
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
@@ -83,7 +83,7 @@ func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 
 	s, err = newStorage(ctx, log.New(os.Stderr, "", log.LstdFlags), connStr)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("creating storage: %v", err)
 	}
 
 	return ctx, s
