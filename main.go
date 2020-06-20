@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"runtime"
 	"strings"
@@ -32,7 +33,51 @@ func main() {
 
 	switch command {
 	case "serve":
-		l.Fatal("todo")
+		ots := &owntracksServer{
+			log: l,
+		}
+
+		var (
+			listen string
+		)
+
+		fs := flag.NewFlagSet("serve", flag.ExitOnError)
+		base.AddFlags(fs)
+		fs.StringVar(&listen, "listen", getEnvDefault("LISTEN", "localhost:8080"), "Address to listen on")
+		fs.StringVar(&ots.username, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
+		fs.StringVar(&ots.password, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
+
+		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
+			l.Fatal(err.Error())
+		}
+		base.Parse(ctx, l)
+
+		var errs []string
+
+		if ots.username == "" {
+			errs = append(errs, "ot-username required")
+		}
+
+		if ots.password == "" {
+			errs = append(errs, "ot-password required")
+		}
+
+		if len(errs) > 0 {
+			fmt.Printf("%s\n", strings.Join(errs, ", "))
+			fs.Usage()
+			os.Exit(1)
+		}
+
+		ots.store = base.storage
+
+		mux := http.NewServeMux()
+
+		mux.HandleFunc("/pub", ots.HandlePublish)
+
+		l.Printf("Listing on %s", listen)
+		if err := http.ListenAndServe(listen, mux); err != nil {
+			l.Fatalf("Error serving: %v", err)
+		}
 	case "4sqsync":
 		cmd := fsqSyncCommand{
 			log: l,

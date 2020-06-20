@@ -213,6 +213,32 @@ var migrations = []migration{
 		alter table venues_new rename to venues;
 		`,
 	},
+	{
+		Idx: 2020062021736,
+		SQL: `
+		create table device_locations (
+			accuracy integer,
+			altitude integer,
+			batt integer,
+			battery_status integer,
+			course_over_ground integer,
+			lat float,
+			lng float,
+			region_radius float,
+			trigger text,
+			tracker_id text,
+			timestamp datetime,
+			vertical_accuracy integer,
+			velocity integer,
+			barometric_pressure float64,
+			connection_status string,
+			topic string,
+			in_regions string, -- json array of regions
+			raw_message text,
+			created_at datetime default (datetime('now'))
+		);
+		`,
+	},
 }
 
 type Storage struct {
