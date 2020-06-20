@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"log"
 	"sort"
+	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/mattn/go-sqlite3"
@@ -32,7 +35,7 @@ var migrations = []migration{
 				id text primary key,
 				fsq_raw text,
 				fsq_id text unique,
-				created_at text default (datetime('now'))
+				created_at datetime default (datetime('now'))
 			);
 
 			create table people (
@@ -41,7 +44,7 @@ var migrations = []migration{
 				lastname text,
 				fsq_id text unique,
 				email text, -- unique would be nice, but imports don't have it
-				created_at text default (datetime('now'))
+				created_at datetime default (datetime('now'))
 			);
 
 			-- venue represents a visitable place/business
@@ -49,7 +52,7 @@ var migrations = []migration{
 				id text primary key,
 				name text,
 				fsq_id text unique,
-				created_at text default (datetime('now'))
+				created_at datetime default (datetime('now'))
 			);
 
 			-- location represent a physical place
@@ -57,9 +60,58 @@ var migrations = []migration{
 				id text primary key,
 				name text,
 				fsq_id text unique,
-				created_at text default (datetime('now'))
+				created_at datetime default (datetime('now'))
 			);
 		`,
+	},
+	{
+		Idx: 202006192128,
+		SQL: `
+			alter table checkins add checkin_time datetime; -- UTC time of the checkin
+			alter table checkins add checkin_time_offset integer; -- Offset (in mins) to local time of checkin
+		`,
+		AfterFunc: func(ctx context.Context, tx *sql.Tx) error {
+			rows, err := tx.QueryContext(ctx,
+				`select id, fsq_raw from checkins where fsq_id is not null`)
+			if err != nil {
+				return fmt.Errorf("getting checkins: %v", err)
+			}
+			defer rows.Close()
+			for rows.Next() {
+				var (
+					id     string
+					cijson string
+				)
+				if err := rows.Scan(&id, &cijson); err != nil {
+					return fmt.Errorf("scanning row: %v", err)
+				}
+				fsq := fsqCheckin{}
+				if err := json.Unmarshal([]byte(cijson), &fsq); err != nil {
+					return fmt.Errorf("unmarshaling checkin: %v", err)
+				}
+				// the foursquare created at time is UTC
+				citime := time.Unix(int64(fsq.CreatedAt), 0)
+
+				log.Printf("inserting %s into %s", citime.String(), id)
+
+				res, err := tx.ExecContext(ctx, `update checkins set checkin_time=$1, checkin_time_offset=$s where id=$3`,
+					citime, fsq.TimeZoneOffset, id)
+				if err != nil {
+					return fmt.Errorf("setting checkedin_at: %v", err)
+				}
+				ra, err := res.RowsAffected()
+				if err != nil {
+					return fmt.Errorf("checking rows affected: %v", err)
+				}
+				if ra != 1 {
+					return fmt.Errorf("wanted update row %s to affect 1 row, got: %d", id, ra)
+				}
+			}
+			if err := rows.Err(); err != nil {
+				return fmt.Errorf("rows err: %v", err)
+			}
+			return nil
+		},
 	},
 }
 
@@ -91,8 +143,8 @@ func (s *Storage) migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(
 		ctx,
 		`create table if not exists migrations (
-		idx bigint primary key not null,
-		at timestamptz not null
+		idx integer primary key not null,
+		at datetime not null
 		);`,
 	); err != nil {
 		return err

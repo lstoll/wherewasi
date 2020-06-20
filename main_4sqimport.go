@@ -24,6 +24,11 @@ type fsqSyncCommand struct {
 func (f *fsqSyncCommand) run(ctx context.Context) error {
 	f.log.Print("Starting foursquare checkout export")
 
+	lastTime, err := f.storage.Last4sqCheckinTime(ctx)
+	if err != nil {
+		return fmt.Errorf("finding latest checkin time: %v", err)
+	}
+
 	bf := func(batch []fsqCheckin) error {
 		for _, ci := range batch {
 			id, err := f.storage.Upsert4sqCheckin(ctx, ci)
@@ -35,8 +40,14 @@ func (f *fsqSyncCommand) run(ctx context.Context) error {
 		return nil
 	}
 
-	var err error
-	if err = f.fetchCheckins(ctx, time.Time{}, bf); err != nil {
+	// add some buffer to avoid missing checkins. DB insert is idempotent, so
+	// should be fine
+	if !lastTime.IsZero() {
+		lastTime = lastTime.Add(-24 * time.Hour)
+		f.log.Printf("Starting fetch from: %v", lastTime)
+	}
+
+	if err := f.fetchCheckins(ctx, lastTime, bf); err != nil {
 		return err
 	}
 
@@ -105,7 +116,7 @@ func (f *fsqSyncCommand) fetchCheckins(ctx context.Context, since time.Time, bat
 
 		fetchCount := len(fsResp.Response.Checkins.Items)
 		if fetchCount == 0 {
-			if fetched != fsResp.Response.Checkins.Count {
+			if fetched != fsResp.Response.Checkins.Count && since.IsZero() {
 				f.log.Printf("WARN consistency error: fetched %d of %d records", fetched, fsResp.Response.Checkins.Count)
 			}
 			return nil
