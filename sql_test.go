@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"testing"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -42,7 +45,9 @@ func TestMigrations(t *testing.T) {
 func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	ctx = context.Background()
 
-	connStr := "file:test.db?cache=shared&mode=memory&_foreign_keys=on"
+	tr := rand.New(rand.NewSource(time.Now().UnixNano())).Int63()
+
+	connStr := fmt.Sprintf("file:test-%d.db?cache=shared&mode=memory&_foreign_keys=on", tr)
 
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
