@@ -59,7 +59,7 @@ jobs:
         docker buildx build --output "type=image,push=false" ${{ steps.prepare.outputs.buildx_args }}
 
     - name: Docker Login
-      if: success() # && github.ref == 'main'
+      if: success() && github.ref == 'main'
       env:
         DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
         DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
@@ -67,6 +67,6 @@ jobs:
         echo "${DOCKER_PASSWORD}" | docker login --username "${DOCKER_USERNAME}" --password-stdin
 
     - name: Docker Buildx (push)
-      if: success() # && github.ref == 'main'
+      if: success() && github.ref == 'main'
       run: |
         docker buildx build --output "type=image,push=true" ${{ steps.prepare.outputs.buildx_args }}
