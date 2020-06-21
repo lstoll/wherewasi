@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -14,8 +13,7 @@ import (
 )
 
 type migration struct {
-	// Idx is a unique identifier for this migration. It should be sortable in
-	// the desired order of execution. Datestamp is a good idea
+	// Idx is a unique identifier for this migration. Datestamp is a good idea
 	Idx int
 	// SQL to execute as part of this migration
 	SQL string
@@ -27,6 +25,7 @@ type migration struct {
 	AfterFunc func(context.Context, *sql.Tx) error
 }
 
+// migrations are run in the order presented here
 var migrations = []migration{
 	{
 		Idx: 202006141339,
@@ -277,8 +276,6 @@ func (s *Storage) migrate(ctx context.Context) error {
 	}
 
 	if err := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		sortMigrations(migrations)
-
 		for _, mig := range migrations {
 			var idx int
 			err := tx.QueryRowContext(ctx, `select idx from migrations where idx = $1;`, mig.Idx).Scan(&idx)
@@ -339,10 +336,6 @@ func (s *Storage) execTx(ctx context.Context, f func(ctx context.Context, tx *sq
 	}
 
 	return tx.Commit()
-}
-
-func sortMigrations(in []migration) {
-	sort.Slice(in, func(i, j int) bool { return in[i].Idx < in[j].Idx })
 }
 
 func newDBID() string {

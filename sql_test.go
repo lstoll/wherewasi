@@ -7,7 +7,6 @@ import (
 	"os"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -37,36 +36,6 @@ func TestMigrations(t *testing.T) {
 
 	if numMigs != len(migrations) {
 		t.Errorf("want %d migrations, found %d in db", len(migrations), numMigs)
-	}
-
-	unsorted := []migration{
-		{
-			Idx: 5,
-		},
-		{
-			Idx: 10,
-		},
-		{
-			Idx: 1,
-		},
-	}
-
-	sortMigrations(unsorted)
-
-	sorted := []migration{
-		{
-			Idx: 1,
-		},
-		{
-			Idx: 5,
-		},
-		{
-			Idx: 10,
-		},
-	}
-
-	if diff := cmp.Diff(unsorted, sorted); diff != "" {
-		t.Errorf("sorting failed: %s", diff)
 	}
 }
 
