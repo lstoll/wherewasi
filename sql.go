@@ -238,6 +238,48 @@ var migrations = []migration{
 		);
 		`,
 	},
+	{
+		Idx: 202006211731,
+		SQL: `
+		create table device_locations_new (
+			accuracy integer, -- metres
+			altitude integer, -- metres
+			batt integer,
+			battery_status integer,
+			course_over_ground integer, -- degrees, direction heading
+			lat float,
+			lng float,
+			region_radius float, --metres
+			trigger text,
+			tracker_id text,
+			timestamp datetime,
+			vertical_accuracy integer, -- metres
+			velocity integer, -- kmh
+			barometric_pressure float64,
+			connection_status string,
+			topic string,
+			in_regions string, -- json array of regions
+
+			-- One of these should alaways be populated, can be used to determine where
+			-- the message came from
+			raw_owntracks_message text, -- If this is owntracks, the raw json submitted
+			raw_google_location text, -- If this is google location imported, raw json
+
+			created_at datetime default (datetime('now'))
+		);
+
+		insert into device_locations_new(accuracy, altitude, batt, battery_status, course_over_ground,
+			lat, lng, region_radius, trigger, tracker_id, timestamp, vertical_accuracy, velocity,
+			barometric_pressure, connection_status, topic, in_regions, raw_owntracks_message, created_at)
+		select accuracy, altitude, batt, battery_status, course_over_ground,
+			lat, lng, region_radius, trigger, tracker_id, timestamp, vertical_accuracy, velocity,
+			barometric_pressure, connection_status, topic, in_regions, raw_message, created_at
+			from device_locations;
+
+		drop table if exists device_locations;
+		alter table device_locations_new rename to device_locations;
+		`,
+	},
 }
 
 type Storage struct {
