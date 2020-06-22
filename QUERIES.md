@@ -33,3 +33,11 @@ where PtDistWithin(
     and p.name = '<Person Name>'
 order by c.checkin_time asc;
 ```
+
+### Device locations by month
+
+```
+select count(*) as count, strftime("%m-%Y", timestamp) as 'mm-yyy'
+from device_locations group by strftime("%m-%Y", timestamp)
+order by timestamp asc;
+```

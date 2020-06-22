@@ -109,6 +109,37 @@ func main() {
 		if err := cmd.run(ctx); err != nil {
 			l.Fatal(err.Error())
 		}
+	case "takeoutimport":
+		cmd := takeoutimportCommand{
+			log: l,
+		}
+
+		fs := flag.NewFlagSet("takeoutimport", flag.ExitOnError)
+		base.AddFlags(fs)
+		fs.StringVar(&cmd.filePath, "path", "", "Path to google takeout locatiom history file (required)")
+
+		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
+			l.Fatal(err.Error())
+		}
+		base.Parse(ctx, l)
+
+		var errs []string
+
+		if cmd.filePath == "" {
+			errs = append(errs, "path required")
+		}
+
+		if len(errs) > 0 {
+			fmt.Printf("%s\n", strings.Join(errs, ", "))
+			fs.Usage()
+			os.Exit(1)
+		}
+
+		cmd.store = base.storage
+
+		if err := cmd.run(ctx); err != nil {
+			l.Fatal(err.Error())
+		}
 	default:
 		log.Fatal("invalid command")
 	}

@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"testing"
+	"time"
 
-	"github.com/google/go-cmp/cmp"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -38,42 +40,14 @@ func TestMigrations(t *testing.T) {
 	if numMigs != len(migrations) {
 		t.Errorf("want %d migrations, found %d in db", len(migrations), numMigs)
 	}
-
-	unsorted := []migration{
-		{
-			Idx: 5,
-		},
-		{
-			Idx: 10,
-		},
-		{
-			Idx: 1,
-		},
-	}
-
-	sortMigrations(unsorted)
-
-	sorted := []migration{
-		{
-			Idx: 1,
-		},
-		{
-			Idx: 5,
-		},
-		{
-			Idx: 10,
-		},
-	}
-
-	if diff := cmp.Diff(unsorted, sorted); diff != "" {
-		t.Errorf("sorting failed: %s", diff)
-	}
 }
 
 func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	ctx = context.Background()
 
-	connStr := "file:test.db?cache=shared&mode=memory&_foreign_keys=on"
+	tr := rand.New(rand.NewSource(time.Now().UnixNano())).Int63()
+
+	connStr := fmt.Sprintf("file:test-%d.db?cache=shared&mode=memory&_foreign_keys=on", tr)
 
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
