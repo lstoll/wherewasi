@@ -47,6 +47,11 @@ func main() {
 		fs.StringVar(&ots.username, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
 		fs.StringVar(&ots.password, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
 
+		fs.StringVar(&ots.brokerURL, "mqtt-server", getEnvDefault("MQTT_SERVER", ""), "If set, MQTT host to pass/check for owntracks messages")
+		fs.StringVar(&ots.brokerUsername, "mqtt-user", getEnvDefault("MQTT_USERNAME", ""), "Username for MQTT server")
+		fs.StringVar(&ots.brokerPassword, "mqtt-pass", getEnvDefault("MQTT_PASSWORD", ""), "Password for MQTT server")
+		fs.StringVar(&ots.brokerTopic, "mqtt-topic", getEnvDefault("MQTT_TOPIC", "owntracks/+/+"), "Topic to subscribe to")
+
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
 		}

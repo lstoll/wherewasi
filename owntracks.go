@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
+
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
 type owntracksStore interface {
@@ -24,6 +27,11 @@ type owntracksServer struct {
 	password string
 
 	store owntracksStore
+
+	brokerURL      string
+	brokerUsername string
+	brokerPassword string
+	brokerTopic    string
 }
 
 func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) {
@@ -52,6 +60,44 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 			o.log.Printf("saving owntracks location: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
+		}
+	}
+
+	// Publish to MQTT, get response info
+	opts := mqtt.NewClientOptions()
+	opts.AddBroker(o.brokerURL)
+	opts.SetClientID("wherewasi")
+	opts.SetUsername(o.brokerUsername)
+	opts.SetPassword(o.brokerPassword)
+
+	choke := make(chan [2]string)
+
+	opts.SetDefaultPublishHandler(func(_ mqtt.Client, msg mqtt.Message) {
+		choke <- [2]string{msg.Topic(), string(msg.Payload())}
+	})
+
+	client := mqtt.NewClient(opts)
+	if token := client.Connect(); token.Wait() && token.Error() != nil {
+		o.log.Printf("connecting to broker: %v", token.Error())
+		http.Error(w, token.Error().Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if token := client.Subscribe(o.brokerTopic, byte(0), nil); token.Wait() && token.Error() != nil {
+		o.log.Printf("subscribing: %v", token.Error())
+		http.Error(w, token.Error().Error(), http.StatusInternalServerError)
+		return
+	}
+
+	to := time.NewTimer(5 * time.Second)
+
+outer:
+	for {
+		select {
+		case <-to.C:
+			break outer
+		case msg := <-choke:
+			fmt.Printf("RECEIVED TOPIC: %s MESSAGE: %s\n", msg[0], msg[1])
 		}
 	}
 
