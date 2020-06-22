@@ -198,13 +198,9 @@ func registerSpatiaLite() {
 	exts := map[string]string{}
 
 	if runtime.GOOS == "linux" {
-		// exts["libspatialite.so.7"] = "spatialite_init_ex"
+		exts["libspatialite.so.7"] = "spatialite_init_ex"
 	} else if runtime.GOOS == "darwin" {
-		// Disabling for now, throws
-		// [signal SIGFPE: floating-point exception code=0x7 addr=0x6d65426 pc=0x6d65426]
-
-		// exts["mod_spatialite"] = "sqlite3_modspatialite_init"
-		_ = struct{}{}
+		exts["mod_spatialite"] = "sqlite3_modspatialite_init"
 	}
 
 	sql.Register("spatialite", &sqlite3.SQLiteDriver{
