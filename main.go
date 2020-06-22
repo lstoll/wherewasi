@@ -114,7 +114,7 @@ func main() {
 			log: l,
 		}
 
-		fs := flag.NewFlagSet("4sqsync", flag.ExitOnError)
+		fs := flag.NewFlagSet("takeoutimport", flag.ExitOnError)
 		base.AddFlags(fs)
 		fs.StringVar(&cmd.filePath, "path", "", "Path to google takeout locatiom history file (required)")
 
