@@ -19,22 +19,12 @@ type owntracksStore interface {
 type owntracksServer struct {
 	log logger
 
-	// basic auth for the endpoint
-	username string
-	password string
-
 	store owntracksStore
 }
 
 func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "bad method", http.StatusMethodNotAllowed)
-		return
-	}
-
-	u, p, ok := r.BasicAuth()
-	if !(ok && u == o.username && p == o.password) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 

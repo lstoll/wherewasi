@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +15,8 @@ import (
 	"strings"
 
 	"github.com/mattn/go-sqlite3"
+	oidcm "github.com/pardot/oidc/middleware"
+	"golang.org/x/crypto/hkdf"
 )
 
 func init() {
@@ -37,15 +42,37 @@ func main() {
 			log: l,
 		}
 
+		ws := &web{}
+
+		ah := &oidcm.Handler{}
+
 		var (
-			listen string
+			listen         string
+			disableAuth    bool
+			secureKeyFlag  string
+			basicAuth      bool
+			otUsername     string
+			otPassword     string
+			requireSubject string
 		)
 
 		fs := flag.NewFlagSet("serve", flag.ExitOnError)
 		base.AddFlags(fs)
 		fs.StringVar(&listen, "listen", getEnvDefault("LISTEN", "localhost:8080"), "Address to listen on")
-		fs.StringVar(&ots.username, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
-		fs.StringVar(&ots.password, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
+		fs.StringVar(&secureKeyFlag, "secure-key", getEnvDefault("SECURE_KEY", ""), "Key used to encrypt/verify information like cookies")
+
+		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
+		fs.StringVar(&otPassword, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
+
+		fs.StringVar(&ah.Issuer, "auth-issuer", getEnvDefault("AUTH_ISSUER", ""), "OIDC Issuer (required unless auth disabled)")
+		fs.StringVar(&ah.ClientID, "auth-client-id", getEnvDefault("AUTH_CLIENT_ID", ""), "OIDC Client ID (required unless auth disabled)")
+		fs.StringVar(&ah.ClientSecret, "auth-client-secret", getEnvDefault("AUTH_CLIENT_SECRET", ""), "OIDC Client Secret (required unless auth disabled)")
+		fs.StringVar(&ah.BaseURL, "auth-base-url", getEnvDefault("AUTH_BASE_URL", ""), "Base URL this service runs on (required unless auth disabled)")
+		fs.StringVar(&ah.RedirectURL, "auth-redirect-url", getEnvDefault("AUTH_REDIRECT_URL", ""), "OIDC Redirect URL (required unless auth disabled)")
+		fs.StringVar(&requireSubject, "auth-require-subject", getEnvDefault("AUTH_REQUIRE_SUBJECT", ""), "If set, require this subject to grant access")
+		fs.BoolVar(&basicAuth, "i-am-basic", false, "If enabled, basic auth will be used for the web UI using the owntracks endpoint creds")
+
+		fs.BoolVar(&disableAuth, "auth-disabled", false, "Disable auth altogether")
 
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
@@ -54,12 +81,34 @@ func main() {
 
 		var errs []string
 
-		if ots.username == "" {
+		if secureKeyFlag == "" {
+			errs = append(errs, "secure-key required")
+		}
+
+		if otUsername == "" {
 			errs = append(errs, "ot-username required")
 		}
 
-		if ots.password == "" {
+		if otPassword == "" {
 			errs = append(errs, "ot-password required")
+		}
+
+		if !disableAuth && !basicAuth {
+			if ah.Issuer == "" {
+				errs = append(errs, "auth-issuer required")
+			}
+			if ah.Issuer == "" {
+				errs = append(errs, "auth-client-id required")
+			}
+			if ah.Issuer == "" {
+				errs = append(errs, "auth-client-secret required")
+			}
+			if ah.Issuer == "" {
+				errs = append(errs, "auth-base-url required")
+			}
+			if ah.Issuer == "" {
+				errs = append(errs, "auth-redirect-url required")
+			}
 		}
 
 		if len(errs) > 0 {
@@ -68,11 +117,45 @@ func main() {
 			os.Exit(1)
 		}
 
+		krdr := hkdf.New(sha256.New, []byte(secureKeyFlag), nil, nil)
+		scHashKey := make([]byte, 64)
+		scEncryptKey := make([]byte, 32)
+		if _, err := io.ReadFull(krdr, scHashKey); err != nil {
+			log.Fatal(err)
+		}
+		if _, err := io.ReadFull(krdr, scEncryptKey); err != nil {
+			log.Fatal(err)
+		}
+		ah.SessionAuthenticationKey = scHashKey
+		ah.SessionEncryptionKey = scEncryptKey
+
 		ots.store = base.storage
 
 		mux := http.NewServeMux()
 
-		mux.HandleFunc("/pub", ots.HandlePublish)
+		mux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+		if disableAuth {
+			mux.Handle("/", ws)
+		} else if basicAuth {
+			mux.Handle("/", wrapBasicAuth(otUsername, otPassword, ws))
+		} else {
+			mux.Handle("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				ah.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					cl := oidcm.ClaimsFromContext(r.Context())
+					if requireSubject != "" && (cl == nil || cl.Subject != requireSubject) {
+						var emsg string
+						if cl != nil {
+							emsg = fmt.Sprintf("Subject %s not permitted", cl.Subject)
+						} else {
+							emsg = "Subject claim not found"
+						}
+						http.Error(w, emsg, http.StatusForbidden)
+						return
+					}
+					ws.ServeHTTP(w, r)
+				})).ServeHTTP(w, r)
+			}))
+		}
 
 		l.Printf("Listing on %s", listen)
 		if err := http.ListenAndServe(listen, mux); err != nil {
@@ -215,5 +298,17 @@ func registerSpatiaLite() {
 			}
 			return nil
 		},
+	})
+}
+
+func wrapBasicAuth(username, password string, wrap http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		if !ok || subtle.ConstantTimeCompare([]byte(u), []byte(username)) != 1 || subtle.ConstantTimeCompare([]byte(p), []byte(password)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Basic realm="wherewasi"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		wrap.ServeHTTP(w, r)
 	})
 }
