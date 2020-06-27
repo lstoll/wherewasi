@@ -41,3 +41,15 @@ select count(*) as count, strftime("%m-%Y", timestamp) as 'mm-yyy'
 from device_locations group by strftime("%m-%Y", timestamp)
 order by timestamp asc;
 ```
+
+### Categories visited in a city
+
+```
+select count(c.id) as count, json_extract(fsq_raw, '$.venue.categories[0].name') as category
+from checkins c
+join venues v on (c.venue_id = v.id)
+where PtDistWithin(
+        MakePoint(50.8503, 4.3517, 4326), -- Brussels, BE
+        MakePoint(v.lat, v.lng, 4326), 20000)
+group by category order by count desc;
+```
