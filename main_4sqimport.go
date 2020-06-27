@@ -3,11 +3,13 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cenkalti/backoff/v4"
@@ -19,6 +21,28 @@ type fsqSyncCommand struct {
 	oauth2token string
 
 	storage *Storage
+}
+
+func (f *fsqSyncCommand) AddFlags(fs *flag.FlagSet) {
+	fs.StringVar(&f.oauth2token, "foursquare-api-key", getEnvDefault("FOURSQUARE_API_KEY", ""), "Token to authenticate to foursquare API with. https://your-foursquare-oauth-token.glitch.me")
+}
+
+func (f *fsqSyncCommand) Validate() error {
+	var errs []string
+
+	if f.oauth2token == "" {
+		errs = append(errs, "foursquare-api-key")
+	}
+
+	if f.storage == nil {
+		errs = append(errs, "storage is required")
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, ", "))
+	} else {
+		return nil
+	}
 }
 
 func (f *fsqSyncCommand) run(ctx context.Context) error {

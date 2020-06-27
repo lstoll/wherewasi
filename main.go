@@ -13,6 +13,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/mattn/go-sqlite3"
 	oidcm "github.com/pardot/oidc/middleware"
@@ -42,18 +43,24 @@ func main() {
 			log: l,
 		}
 
+		fssync := &fsqSyncCommand{
+			log: l,
+		}
+
 		ws := &web{}
 
 		ah := &oidcm.Handler{}
 
 		var (
-			listen         string
-			disableAuth    bool
-			secureKeyFlag  string
-			basicAuth      bool
-			otUsername     string
-			otPassword     string
-			requireSubject string
+			listen          string
+			disableAuth     bool
+			secureKeyFlag   string
+			basicAuth       bool
+			otUsername      string
+			otPassword      string
+			requireSubject  string
+			disable4sqSync  bool
+			fsqSyncInterval time.Duration
 		)
 
 		fs := flag.NewFlagSet("serve", flag.ExitOnError)
@@ -73,6 +80,10 @@ func main() {
 		fs.BoolVar(&basicAuth, "i-am-basic", false, "If enabled, basic auth will be used for the web UI using the owntracks endpoint creds")
 
 		fs.BoolVar(&disableAuth, "auth-disabled", false, "Disable auth altogether")
+
+		fs.BoolVar(&disable4sqSync, "4sq-sync-disabled", false, "Disable background foursquare sync")
+		fs.DurationVar(&fsqSyncInterval, "4sq-sync-interval", 1*time.Hour, "How often we should sync foursquare in the background")
+		fssync.AddFlags(fs)
 
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
@@ -157,6 +168,30 @@ func main() {
 			}))
 		}
 
+		if !disable4sqSync {
+			go func() {
+				fssync.storage = base.storage
+
+				sync := func() {
+					l.Print("Running foursquare sync")
+					if err := fssync.run(ctx); err != nil {
+						// for now, bombing out is an easy way to get attention
+						l.Fatalf("error running foursquare sync: %v", err)
+					}
+				}
+				sync()
+				ticker := time.NewTicker(1 * time.Hour)
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						sync()
+					}
+				}
+			}()
+		}
+
 		l.Printf("Listing on %s", listen)
 		if err := http.ListenAndServe(listen, mux); err != nil {
 			l.Fatalf("Error serving: %v", err)
@@ -168,26 +203,20 @@ func main() {
 
 		fs := flag.NewFlagSet("4sqsync", flag.ExitOnError)
 		base.AddFlags(fs)
-		fs.StringVar(&cmd.oauth2token, "api-key", getEnvDefault("FOURSQUARE_API_KEY", ""), "Token to authenticate to foursquare API with. https://your-foursquare-oauth-token.glitch.me")
+		cmd.AddFlags(fs)
 
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
 		}
 		base.Parse(ctx, l)
 
-		var errs []string
-
-		if cmd.oauth2token == "" {
-			errs = append(errs, "api-key required")
-		}
-
-		if len(errs) > 0 {
-			fmt.Printf("%s\n", strings.Join(errs, ", "))
-			fs.Usage()
-			os.Exit(1)
-		}
-
 		cmd.storage = base.storage
+
+		if err := cmd.Validate(); err != nil {
+			l.Printf("validation error: %v", err)
+			fs.Usage()
+			os.Exit(2)
+		}
 
 		if err := cmd.run(ctx); err != nil {
 			l.Fatal(err.Error())
