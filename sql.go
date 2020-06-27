@@ -12,6 +12,8 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+// const sqliteDateFormat = "2006-01-02"
+
 type migration struct {
 	// Idx is a unique identifier for this migration. Datestamp is a good idea
 	Idx int
@@ -278,6 +280,23 @@ var migrations = []migration{
 
 		drop table if exists device_locations;
 		alter table device_locations_new rename to device_locations;
+		`,
+	},
+	{
+		Idx: 202006270811,
+		SQL: `
+		create table trips (
+			id text primary key,
+			tripit_id text unique,
+			tripit_raw text,
+			name text,
+			start_date date,
+			end_date date,
+			primary_location text,
+			description text
+
+			created_at datetime default (datetime('now'))
+		);
 		`,
 	},
 }
