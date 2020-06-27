@@ -61,16 +61,17 @@ func main() {
 		ah := &oidcm.Handler{}
 
 		var (
-			listen          string
-			baseURL         string
-			disableAuth     bool
-			secureKeyFlag   string
-			basicAuth       bool
-			otUsername      string
-			otPassword      string
-			requireSubject  string
-			disable4sqSync  bool
-			fsqSyncInterval time.Duration
+			listen            string
+			baseURL           string
+			disableAuth       bool
+			secureKeyFlag     string
+			basicAuth         bool
+			otUsername        string
+			otPassword        string
+			requireSubject    string
+			disable4sqSync    bool
+			disableTripitSync bool
+			fsqSyncInterval   time.Duration
 		)
 
 		fs := flag.NewFlagSet("serve", flag.ExitOnError)
@@ -99,6 +100,11 @@ func main() {
 		// redirect to https://<host>/connect/fsqcallback
 		fs.StringVar(&ws.fsqOauthConfig.ClientID, "fsq-client-id", getEnvDefault("FSQ_CLIENT_ID", ""), "Oauth2 Client ID")
 		fs.StringVar(&ws.fsqOauthConfig.ClientSecret, "fsq-client-secret", getEnvDefault("FSQ_CLIENT_SECRET", ""), "Oauth2 Client Secret")
+
+		// https://www.tripit.com/developer
+		fs.BoolVar(&disableTripitSync, "tripit-sync-disabled", false, "Disable background tripit sync")
+		fs.StringVar(&ws.tripitAPIKey, "tripit-api-key", getEnvDefault("TRIPIT_API_KEY", ""), "Oauth1 API Key for Tripit")
+		fs.StringVar(&ws.tripitAPISecret, "tripit-api-secret", getEnvDefault("TRIPIT_API_SECRET", ""), "Oauth1 API Secret for Tripit")
 
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
@@ -163,6 +169,7 @@ func main() {
 		ah.SessionAuthenticationKey = scHashKey
 		ah.SessionEncryptionKey = scEncryptKey
 		ah.BaseURL = baseURL
+		ws.baseURL = baseURL
 
 		ots.store = base.storage
 
@@ -222,6 +229,12 @@ func main() {
 					}
 				}
 			}()
+		}
+
+		if !disableTripitSync {
+			if ws.tripitAPIKey == "" || ws.tripitAPISecret == "" {
+				l.Fatal("tripit oauth1 config not set")
+			}
 		}
 
 		l.Printf("Listing on %s", listen)
@@ -384,7 +397,9 @@ func wrapBasicAuth(username, password string, wrap http.Handler) http.Handler {
 }
 
 type secrets struct {
-	FourquareAPIKey string `json:"foursquare_api_key,omitempty"`
+	FourquareAPIKey   string `json:"foursquare_api_key,omitempty"`
+	TripitOAuthToken  string `json:"tripit_oauth_token,omitempty"`
+	TripitOAuthSecret string `json:"tripit_oauth_secret,omitempty"`
 }
 
 type secretsManager struct {

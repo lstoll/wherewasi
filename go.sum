@@ -1,4 +1,6 @@
 cloud.google.com/go v0.34.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
+github.com/ancientlore/go-tripit v0.2.1 h1:RIaDTlSUdxZVXEMm6m2PhSbxIe9lWEssAQapMfQBxaI=
+github.com/ancientlore/go-tripit v0.2.1/go.mod h1:j8dVQS1OVXO/mrJPx7fJ2hhafiLJ1AOfEELQvBJDXrc=
 github.com/cenkalti/backoff/v4 v4.0.2 h1:JIufpQLbh4DkbQoii76ItQIUFzevQSqOLZca4eamEDs=
 github.com/cenkalti/backoff/v4 v4.0.2/go.mod h1:eEew/i+1Q6OrCDZh3WiXYv3+nJwBASZ8Bog/87DQnVg=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
