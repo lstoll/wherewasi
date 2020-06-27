@@ -13,4 +13,4 @@ require (
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45
 )
 
-replace github.com/ancientlore/go-tripit => ../go-tripit
+replace github.com/ancientlore/go-tripit => github.com/lstoll/go-tripit v0.2.2-0.20200627123550-bbfe84212d97 // lstoll-eof
