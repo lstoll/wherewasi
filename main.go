@@ -5,12 +5,15 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -18,11 +21,17 @@ import (
 	"github.com/mattn/go-sqlite3"
 	oidcm "github.com/pardot/oidc/middleware"
 	"golang.org/x/crypto/hkdf"
+	"golang.org/x/oauth2"
 )
 
 func init() {
 	registerSpatiaLite()
 }
+
+const (
+	mainDBFile  = "wherewasi.db"
+	secretsFile = "secrets.json"
+)
 
 func main() {
 	ctx := context.Background()
@@ -53,6 +62,7 @@ func main() {
 
 		var (
 			listen          string
+			baseURL         string
 			disableAuth     bool
 			secureKeyFlag   string
 			basicAuth       bool
@@ -67,6 +77,7 @@ func main() {
 		base.AddFlags(fs)
 		fs.StringVar(&listen, "listen", getEnvDefault("LISTEN", "localhost:8080"), "Address to listen on")
 		fs.StringVar(&secureKeyFlag, "secure-key", getEnvDefault("SECURE_KEY", ""), "Key used to encrypt/verify information like cookies")
+		fs.StringVar(&baseURL, "base-url", getEnvDefault("BASE_URL", "http://localhost:8080"), "Base URL this service runs on")
 
 		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
 		fs.StringVar(&otPassword, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
@@ -74,7 +85,6 @@ func main() {
 		fs.StringVar(&ah.Issuer, "auth-issuer", getEnvDefault("AUTH_ISSUER", ""), "OIDC Issuer (required unless auth disabled)")
 		fs.StringVar(&ah.ClientID, "auth-client-id", getEnvDefault("AUTH_CLIENT_ID", ""), "OIDC Client ID (required unless auth disabled)")
 		fs.StringVar(&ah.ClientSecret, "auth-client-secret", getEnvDefault("AUTH_CLIENT_SECRET", ""), "OIDC Client Secret (required unless auth disabled)")
-		fs.StringVar(&ah.BaseURL, "auth-base-url", getEnvDefault("AUTH_BASE_URL", ""), "Base URL this service runs on (required unless auth disabled)")
 		fs.StringVar(&ah.RedirectURL, "auth-redirect-url", getEnvDefault("AUTH_REDIRECT_URL", ""), "OIDC Redirect URL (required unless auth disabled)")
 		fs.StringVar(&requireSubject, "auth-require-subject", getEnvDefault("AUTH_REQUIRE_SUBJECT", ""), "If set, require this subject to grant access")
 		fs.BoolVar(&basicAuth, "i-am-basic", false, "If enabled, basic auth will be used for the web UI using the owntracks endpoint creds")
@@ -85,10 +95,17 @@ func main() {
 		fs.DurationVar(&fsqSyncInterval, "4sq-sync-interval", 1*time.Hour, "How often we should sync foursquare in the background")
 		fssync.AddFlags(fs)
 
+		// https://foursquare.com/developers/apps
+		// redirect to https://<host>/connect/fsqcallback
+		fs.StringVar(&ws.fsqOauthConfig.ClientID, "fsq-client-id", getEnvDefault("FSQ_CLIENT_ID", ""), "Oauth2 Client ID")
+		fs.StringVar(&ws.fsqOauthConfig.ClientSecret, "fsq-client-secret", getEnvDefault("FSQ_CLIENT_SECRET", ""), "Oauth2 Client Secret")
+
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
 		}
 		base.Parse(ctx, l)
+
+		ws.smgr = base.smgr
 
 		var errs []string
 
@@ -128,6 +145,12 @@ func main() {
 			os.Exit(1)
 		}
 
+		ws.fsqOauthConfig.RedirectURL = baseURL + "/connect/fsqcallback"
+		ws.fsqOauthConfig.Endpoint = oauth2.Endpoint{
+			AuthURL:  "https://foursquare.com/oauth2/authenticate",
+			TokenURL: "https://foursquare.com/oauth2/access_token",
+		}
+
 		krdr := hkdf.New(sha256.New, []byte(secureKeyFlag), nil, nil)
 		scHashKey := make([]byte, 64)
 		scEncryptKey := make([]byte, 32)
@@ -139,6 +162,7 @@ func main() {
 		}
 		ah.SessionAuthenticationKey = scHashKey
 		ah.SessionEncryptionKey = scEncryptKey
+		ah.BaseURL = baseURL
 
 		ots.store = base.storage
 
@@ -169,10 +193,18 @@ func main() {
 		}
 
 		if !disable4sqSync {
+			if ws.fsqOauthConfig.ClientID == "" || ws.fsqOauthConfig.ClientSecret == "" {
+				l.Fatal("foursquare oauth2 config not set")
+			}
 			go func() {
 				fssync.storage = base.storage
+				fssync.smgr = base.smgr
 
 				sync := func() {
+					if base.smgr.secrets.FourquareAPIKey == "" {
+						log.Print("No foursquare API key saved, not running")
+						return
+					}
 					l.Print("Running foursquare sync")
 					if err := fssync.run(ctx); err != nil {
 						// for now, bombing out is an easy way to get attention
@@ -211,6 +243,7 @@ func main() {
 		base.Parse(ctx, l)
 
 		cmd.storage = base.storage
+		cmd.smgr = base.smgr
 
 		if err := cmd.Validate(); err != nil {
 			l.Printf("validation error: %v", err)
@@ -274,6 +307,7 @@ type logger interface {
 
 type baseCommand struct {
 	storage *Storage
+	smgr    *secretsManager
 
 	dbPath string
 
@@ -281,7 +315,7 @@ type baseCommand struct {
 }
 
 func (b *baseCommand) AddFlags(fs *flag.FlagSet) {
-	fs.StringVar(&b.dbPath, "db", "db/wherewasi.db", "path to database")
+	fs.StringVar(&b.dbPath, "db-path", "db", "directory for data storage")
 	b.fs = fs
 }
 
@@ -290,7 +324,7 @@ func (b *baseCommand) Parse(ctx context.Context, logger logger) {
 	var errs []string
 
 	if b.dbPath == "" {
-		errs = append(errs, "db required")
+		errs = append(errs, "db-path required")
 	}
 
 	if len(errs) > 0 {
@@ -299,11 +333,18 @@ func (b *baseCommand) Parse(ctx context.Context, logger logger) {
 		os.Exit(1)
 	}
 
-	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?cache=shared&_foreign_keys=on", b.dbPath))
+	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?cache=shared&_foreign_keys=on", filepath.Join(b.dbPath, mainDBFile)))
 	if err != nil {
 		logger.Fatalf("creating storage: %v", err)
 	}
 	b.storage = st
+
+	b.smgr = &secretsManager{
+		path: filepath.Join(b.dbPath, secretsFile),
+	}
+	if err := b.smgr.Load(); err != nil {
+		logger.Fatalf("creating secrets manager: %v", err)
+	}
 }
 
 func registerSpatiaLite() {
@@ -340,4 +381,40 @@ func wrapBasicAuth(username, password string, wrap http.Handler) http.Handler {
 		}
 		wrap.ServeHTTP(w, r)
 	})
+}
+
+type secrets struct {
+	FourquareAPIKey string `json:"foursquare_api_key,omitempty"`
+}
+
+type secretsManager struct {
+	path string
+
+	secrets secrets
+}
+
+func (s *secretsManager) Load() error {
+	b, err := ioutil.ReadFile(s.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// no data yet, just return an empty set
+			return nil
+		}
+		return fmt.Errorf("reading %s: %v", s.path, err)
+	}
+	if err := json.Unmarshal(b, &s.secrets); err != nil {
+		return fmt.Errorf("unmarshaling %s: %v", s.path, err)
+	}
+	return nil
+}
+
+func (s *secretsManager) Save() error {
+	b, err := json.Marshal(s.secrets)
+	if err != nil {
+		return fmt.Errorf("marshaling secrets: %s", err)
+	}
+	if err := ioutil.WriteFile(s.path, b, 0600); err != nil {
+		return fmt.Errorf("writing secrets to %s: %v", s.path, err)
+	}
+	return nil
 }

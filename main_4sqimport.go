@@ -18,24 +18,22 @@ import (
 type fsqSyncCommand struct {
 	log logger
 
-	oauth2token string
-
 	storage *Storage
+	smgr    *secretsManager
 }
 
 func (f *fsqSyncCommand) AddFlags(fs *flag.FlagSet) {
-	fs.StringVar(&f.oauth2token, "foursquare-api-key", getEnvDefault("FOURSQUARE_API_KEY", ""), "Token to authenticate to foursquare API with. https://your-foursquare-oauth-token.glitch.me")
 }
 
 func (f *fsqSyncCommand) Validate() error {
 	var errs []string
 
-	if f.oauth2token == "" {
-		errs = append(errs, "foursquare-api-key")
-	}
-
 	if f.storage == nil {
 		errs = append(errs, "storage is required")
+	}
+
+	if f.smgr == nil {
+		errs = append(errs, "secrets manager is required")
 	}
 
 	if len(errs) > 0 {
@@ -47,6 +45,10 @@ func (f *fsqSyncCommand) Validate() error {
 
 func (f *fsqSyncCommand) run(ctx context.Context) error {
 	f.log.Print("Starting foursquare checkout export")
+
+	if f.smgr.secrets.FourquareAPIKey == "" {
+		return fmt.Errorf("secrets manager has no foursquare API key")
+	}
 
 	lastTime, err := f.storage.Last4sqCheckinTime(ctx)
 	if err != nil {
@@ -94,7 +96,7 @@ func (f *fsqSyncCommand) fetchCheckins(ctx context.Context, since time.Time, bat
 	// https://developer.foursquare.com/docs/api-reference/users/checkins/#parameters
 	q := url.Values{}
 	q.Set("v", "20190101")
-	q.Set("oauth_token", f.oauth2token)
+	q.Set("oauth_token", f.smgr.secrets.FourquareAPIKey)
 	q.Set("sort", "newestfirst")
 	q.Set("limit", "50") // 250 seems to be max, but bigger than 250 gets lots of 500 errors
 	if !since.IsZero() {
