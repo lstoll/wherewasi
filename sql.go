@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -299,6 +300,10 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 		log: logger,
 	}
 
+	if err := integrityCheck(ctx, db); err != nil {
+		return nil, fmt.Errorf("db integrity check: %v", err)
+	}
+
 	if err := s.migrate(ctx); err != nil {
 		return nil, err
 	}
@@ -382,4 +387,31 @@ func (s *Storage) execTx(ctx context.Context, f func(ctx context.Context, tx *sq
 
 func newDBID() string {
 	return uuid.New().String()
+}
+
+func integrityCheck(ctx context.Context, conn *sql.DB) error {
+	// https://www.sqlite.org/pragma.html#pragma_integrity_check
+	rows, err := conn.QueryContext(ctx, "PRAGMA integrity_check;")
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	var res []string
+	for rows.Next() {
+		var val string
+		if err := rows.Scan(&val); err != nil {
+			return err
+		}
+		res = append(res, val)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if len(res) == 1 && res[0] == "ok" {
+		return nil
+	}
+
+	return fmt.Errorf("integrity problems: %s", strings.Join(res, ", "))
 }
