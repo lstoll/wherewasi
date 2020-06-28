@@ -87,6 +87,8 @@ func (f *fsqSyncCommand) run(ctx context.Context) error {
 		return fmt.Errorf("syncing venues: %v", err)
 	}
 
+	f.log.Print("Foursquare sync complete")
+
 	return nil
 }
 

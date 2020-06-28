@@ -1,12 +1,12 @@
-.PHONY: all test lint proto
-
 GOPATH=$(shell go env GOPATH)
+
+.PHONY: all $(GOPATH)/bin/wherewasi test lint proto
 
 go_build_flags="-tags=libsqlite3"
 
 all: $(GOPATH)/bin/wherewasi test lint
 
-$(GOPATH)/bin/wherewasi: *
+$(GOPATH)/bin/wherewasi:
 	go install $(go_build_flags) .
 
 test:
