@@ -1,0 +1,8 @@
+div#mapid {
+    width: 100%;
+    height: 800px; /* why does % not work? */
+}
+
+div#query {
+    height: 50px;
+}

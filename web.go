@@ -1,8 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
-	"log"
+	"html/template"
 	"net/http"
 	"net/url"
 	"strings"
@@ -14,12 +15,15 @@ import (
 
 // the world wide web
 type web struct {
+	log logger
+
 	monce sync.Once
 	mux   *http.ServeMux
 
 	baseURL string
 
-	smgr *secretsManager
+	smgr  *secretsManager
+	store *Storage
 
 	fsqOauthConfig oauth2.Config
 
@@ -32,6 +36,32 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		http.Error(rw, "Not Found", http.StatusNotFound)
 		return
 	}
+	t, err := template.ParseFiles("index.tmpl.html")
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := t.Execute(rw, nil); err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (w *web) recentPoints(rw http.ResponseWriter, r *http.Request) {
+	rw.Header().Set("Content-Type", "application/json")
+
+	rl, err := w.store.RecentLocations(r.Context(), 500)
+	if err != nil {
+		w.log.Printf("getting recent locations: %v", err)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := json.NewEncoder(rw).Encode(rl); err != nil {
+		w.log.Printf("getting recent locations: %v", err)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (w *web) connect(rw http.ResponseWriter, r *http.Request) {
@@ -42,7 +72,6 @@ func (w *web) connect(rw http.ResponseWriter, r *http.Request) {
 	if w.tripitAPIKey != "" {
 		cred := tripit.NewOAuthRequestCredential(w.tripitAPIKey, w.tripitAPISecret)
 		t := tripit.New(tripit.ApiUrl, tripit.ApiVersion, http.DefaultClient, cred)
-		log.Print("start call")
 		m, err := t.GetRequestToken()
 		if err != nil {
 			http.Error(rw, "Getting tripit request token: "+err.Error(), http.StatusInternalServerError)
@@ -95,7 +124,11 @@ func (w *web) init() {
 	w.monce.Do(func() {
 		w.mux = http.NewServeMux()
 
+		w.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+
 		w.mux.HandleFunc("/", w.index)
+		w.mux.HandleFunc("/recent", w.recentPoints)
+
 		w.mux.HandleFunc("/connect", w.connect)
 		w.mux.HandleFunc("/connect/fsqcallback", w.fsqcallback)
 		w.mux.HandleFunc("/connect/tripitcallback", w.tripitCallback)
