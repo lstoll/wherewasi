@@ -50,10 +50,10 @@ func (s *Storage) LatestTripitID(ctx context.Context) (string, error) {
 	)
 	if err := s.db.QueryRowContext(ctx, `select tripit_id from trips where tripit_id is not null order by end_date desc`).Scan(&tripitID); err != nil {
 		if err != sql.ErrNoRows {
-			return "", fmt.Errorf("checking for existing person ID: %v", err)
+			return "", fmt.Errorf("finding latest tripit ID: %v", err)
 		}
 		// no record, create a new ID
-		return "", err
+		return "", nil
 	}
 	return tripitID, nil
 }
