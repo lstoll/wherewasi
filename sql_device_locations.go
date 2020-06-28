@@ -73,7 +73,7 @@ func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutL
 				velkmh = &v
 			}
 
-			_, err = s.db.ExecContext(ctx, `insert into device_locations (accuracy, altitude, course_over_ground, lat, lng, timestamp, vertical_accuracy, velocity, raw_google_location) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			_, err = tx.ExecContext(ctx, `insert into device_locations (accuracy, altitude, course_over_ground, lat, lng, timestamp, vertical_accuracy, velocity, raw_google_location) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				loc.Accuracy, loc.Altitude, loc.Heading, e7ToNormal(loc.LatitudeE7), e7ToNormal(loc.LongitudeE7), ts, loc.VerticalAccuracy, velkmh, string(loc.Raw),
 			)
 			if err != nil {
