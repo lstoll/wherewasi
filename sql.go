@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -303,6 +304,10 @@ var migrations = []migration{
 
 type Storage struct {
 	db *sql.DB
+
+	// go-sqlite supports concurrent reads, but not writes. Queries that write
+	// should use this mutex to synchronize that access
+	writeMu sync.Mutex
 
 	log logger
 }
