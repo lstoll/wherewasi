@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
 
@@ -41,4 +42,18 @@ where tripit_id=?`,
 	}
 
 	return nil
+}
+
+func (s *Storage) LatestTripitID(ctx context.Context) (string, error) {
+	var (
+		tripitID string
+	)
+	if err := s.db.QueryRowContext(ctx, `select tripit_id from trips where tripit_id is not null order by end_date desc`).Scan(&tripitID); err != nil {
+		if err != sql.ErrNoRows {
+			return "", fmt.Errorf("checking for existing person ID: %v", err)
+		}
+		// no record, create a new ID
+		return "", err
+	}
+	return tripitID, nil
 }

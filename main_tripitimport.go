@@ -20,6 +20,8 @@ type tripitSyncCommand struct {
 	storage *Storage
 	smgr    *secretsManager
 
+	fetchAll bool
+
 	oauthAPIKey    string
 	oauthAPISecret string
 }
@@ -61,6 +63,11 @@ func (t *tripitSyncCommand) run(ctx context.Context) error {
 		return fmt.Errorf("secrets manager has no tripit api keys")
 	}
 
+	latestTripID, err := t.storage.LatestTripitID(ctx)
+	if err != nil {
+		return fmt.Errorf("finding latest tripit trip: %v", err)
+	}
+
 	cred := tripit.NewOAuth3LeggedCredential(t.oauthAPIKey, t.oauthAPISecret, t.smgr.secrets.TripitOAuthToken, t.smgr.secrets.TripitOAuthSecret)
 	tcl := tripit.New(tripit.ApiUrl, tripit.ApiVersion, http.DefaultClient, cred)
 
@@ -70,6 +77,8 @@ func (t *tripitSyncCommand) run(ctx context.Context) error {
 	// TODO - consider if we want to fetch everything all the time, or bail when
 	// we hit a known ID?
 	for {
+		var stopFetch bool
+
 		t.log.Print("Fetching page from TripIt")
 		// only get past trips we traveled on. Future trips are less concrete
 		filters := map[string]string{
@@ -110,6 +119,13 @@ func (t *tripitSyncCommand) run(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("marshaling trip: %v", err)
 			}
+
+			if !t.fetchAll && latestTripID != "" && tr.Id == latestTripID {
+				// we're not fetching all, and we've hit an ID we already know.
+				// Stop fetching
+				stopFetch = true
+			}
+
 			// TODO - at some point do we want to deal with invitees? Would be
 			// useful, but need some thought around how we link them properly to the
 			// contacts table/fix bad matches
@@ -119,7 +135,8 @@ func (t *tripitSyncCommand) run(ctx context.Context) error {
 		}
 
 		fetchPage = apiPage + 1
-		if int64(fetchPage) > maxPages {
+		if int64(fetchPage) > maxPages || stopFetch {
+			t.log.Print("Tripit sync complete")
 			// we're done
 			break
 		}

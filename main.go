@@ -60,7 +60,9 @@ func main() {
 
 		ah := &oidcm.Handler{}
 
-		tpsync := &tripitSyncCommand{}
+		tpsync := &tripitSyncCommand{
+			log: l,
+		}
 
 		var (
 			listen            string
@@ -264,9 +266,7 @@ func main() {
 						l.Fatalf("error running tripit sync: %v", err)
 					}
 				}
-				// Don't run on start, it's a bit more expensive and changes
-				// less often
-				// sync()
+				sync()
 				ticker := time.NewTicker(tpSyncInterval)
 				for {
 					select {
@@ -322,6 +322,7 @@ func main() {
 		fs := flag.NewFlagSet("tripitsync", flag.ExitOnError)
 		base.AddFlags(fs)
 		cmd.AddFlags(fs)
+		fs.BoolVar(&cmd.fetchAll, "fetch-all", false, "fetch all trips, not just ones not already fetched")
 
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
