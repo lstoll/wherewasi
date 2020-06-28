@@ -12,6 +12,9 @@ import (
 var _ owntracksStore = (*Storage)(nil)
 
 func (s *Storage) AddOTLocation(ctx context.Context, msg owntracksMessage) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	if !msg.IsLocation() {
 		return fmt.Errorf("message needs to be location")
 	}
@@ -42,6 +45,9 @@ func (s *Storage) AddOTLocation(ctx context.Context, msg owntracksMessage) error
 }
 
 func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutLocation) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	err := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		for _, loc := range locs {
 			if loc.Raw == nil || len(loc.Raw) < 1 {
@@ -67,7 +73,7 @@ func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutL
 				velkmh = &v
 			}
 
-			_, err = s.db.ExecContext(ctx, `insert into device_locations (accuracy, altitude, course_over_ground, lat, lng, timestamp, vertical_accuracy, velocity, raw_google_location) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			_, err = tx.ExecContext(ctx, `insert into device_locations (accuracy, altitude, course_over_ground, lat, lng, timestamp, vertical_accuracy, velocity, raw_google_location) values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 				loc.Accuracy, loc.Altitude, loc.Heading, e7ToNormal(loc.LatitudeE7), e7ToNormal(loc.LongitudeE7), ts, loc.VerticalAccuracy, velkmh, string(loc.Raw),
 			)
 			if err != nil {

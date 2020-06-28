@@ -60,17 +60,23 @@ func main() {
 
 		ah := &oidcm.Handler{}
 
+		tpsync := &tripitSyncCommand{
+			log: l,
+		}
+
 		var (
-			listen          string
-			baseURL         string
-			disableAuth     bool
-			secureKeyFlag   string
-			basicAuth       bool
-			otUsername      string
-			otPassword      string
-			requireSubject  string
-			disable4sqSync  bool
-			fsqSyncInterval time.Duration
+			listen            string
+			baseURL           string
+			disableAuth       bool
+			secureKeyFlag     string
+			basicAuth         bool
+			otUsername        string
+			otPassword        string
+			requireSubject    string
+			disable4sqSync    bool
+			disableTripitSync bool
+			fsqSyncInterval   time.Duration
+			tpSyncInterval    time.Duration
 		)
 
 		fs := flag.NewFlagSet("serve", flag.ExitOnError)
@@ -94,11 +100,15 @@ func main() {
 		fs.BoolVar(&disable4sqSync, "4sq-sync-disabled", false, "Disable background foursquare sync")
 		fs.DurationVar(&fsqSyncInterval, "4sq-sync-interval", 1*time.Hour, "How often we should sync foursquare in the background")
 		fssync.AddFlags(fs)
-
 		// https://foursquare.com/developers/apps
 		// redirect to https://<host>/connect/fsqcallback
 		fs.StringVar(&ws.fsqOauthConfig.ClientID, "fsq-client-id", getEnvDefault("FSQ_CLIENT_ID", ""), "Oauth2 Client ID")
 		fs.StringVar(&ws.fsqOauthConfig.ClientSecret, "fsq-client-secret", getEnvDefault("FSQ_CLIENT_SECRET", ""), "Oauth2 Client Secret")
+
+		// https://www.tripit.com/developer
+		fs.BoolVar(&disableTripitSync, "tripit-sync-disabled", false, "Disable background tripit sync")
+		fs.DurationVar(&tpSyncInterval, "tripit-sync-interval", 6*time.Hour, "How often we should sync tripit in the background")
+		tpsync.AddFlags(fs)
 
 		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
 			l.Fatal(err.Error())
@@ -162,7 +172,12 @@ func main() {
 		}
 		ah.SessionAuthenticationKey = scHashKey
 		ah.SessionEncryptionKey = scEncryptKey
+
+		// Copy fields around as needed
 		ah.BaseURL = baseURL
+		ws.baseURL = baseURL
+		ws.tripitAPIKey = tpsync.oauthAPIKey
+		ws.tripitAPISecret = tpsync.oauthAPISecret
 
 		ots.store = base.storage
 
@@ -196,10 +211,14 @@ func main() {
 			if ws.fsqOauthConfig.ClientID == "" || ws.fsqOauthConfig.ClientSecret == "" {
 				l.Fatal("foursquare oauth2 config not set")
 			}
-			go func() {
-				fssync.storage = base.storage
-				fssync.smgr = base.smgr
 
+			fssync.storage = base.storage
+			fssync.smgr = base.smgr
+
+			if err := fssync.Validate(); err != nil {
+				l.Fatalf("validating foursquare sync command: %v", err)
+			}
+			go func() {
 				sync := func() {
 					if base.smgr.secrets.FourquareAPIKey == "" {
 						log.Print("No foursquare API key saved, not running")
@@ -212,7 +231,7 @@ func main() {
 					}
 				}
 				sync()
-				ticker := time.NewTicker(1 * time.Hour)
+				ticker := time.NewTicker(fsqSyncInterval)
 				for {
 					select {
 					case <-ctx.Done():
@@ -222,6 +241,43 @@ func main() {
 					}
 				}
 			}()
+		}
+
+		if !disableTripitSync {
+			if ws.tripitAPIKey == "" || ws.tripitAPISecret == "" {
+				l.Fatal("tripit oauth1 config not set on ws")
+			}
+
+			tpsync.storage = base.storage
+			tpsync.smgr = base.smgr
+
+			if err := tpsync.Validate(); err != nil {
+				l.Fatalf("validating tripit sync command: %v", err)
+			}
+
+			go func() {
+				sync := func() {
+					if tpsync.smgr.secrets.TripitOAuthToken == "" || tpsync.smgr.secrets.TripitOAuthSecret == "" {
+						log.Print("No tripit API keys saved, not running")
+						return
+					}
+					l.Print("Running tripit sync")
+					if err := tpsync.run(ctx); err != nil {
+						l.Fatalf("error running tripit sync: %v", err)
+					}
+				}
+				sync()
+				ticker := time.NewTicker(tpSyncInterval)
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-ticker.C:
+						sync()
+					}
+				}
+			}()
+
 		}
 
 		l.Printf("Listing on %s", listen)
@@ -249,6 +305,40 @@ func main() {
 			l.Printf("validation error: %v", err)
 			fs.Usage()
 			os.Exit(2)
+		}
+
+		if cmd.smgr.secrets.FourquareAPIKey == "" {
+			l.Fatalf("secrets does not have foursquare creds. http://<server>/connect")
+		}
+
+		if err := cmd.run(ctx); err != nil {
+			l.Fatal(err.Error())
+		}
+	case "tripitsync":
+		cmd := tripitSyncCommand{
+			log: l,
+		}
+
+		fs := flag.NewFlagSet("tripitsync", flag.ExitOnError)
+		base.AddFlags(fs)
+		cmd.AddFlags(fs)
+		fs.BoolVar(&cmd.fetchAll, "fetch-all", false, "fetch all trips, not just ones not already fetched")
+
+		if err := fs.Parse(os.Args[parseIdx:]); err != nil {
+			l.Fatal(err.Error())
+		}
+		base.Parse(ctx, l)
+
+		cmd.storage = base.storage
+		cmd.smgr = base.smgr
+
+		if err := cmd.Validate(); err != nil {
+			l.Printf("validation error: %v", err)
+			fs.Usage()
+			os.Exit(2)
+		}
+		if cmd.smgr.secrets.TripitOAuthToken == "" || cmd.smgr.secrets.TripitOAuthSecret == "" {
+			l.Fatalf("secrets does not have tripit creds. http://<server>/connect")
 		}
 
 		if err := cmd.run(ctx); err != nil {
@@ -384,7 +474,9 @@ func wrapBasicAuth(username, password string, wrap http.Handler) http.Handler {
 }
 
 type secrets struct {
-	FourquareAPIKey string `json:"foursquare_api_key,omitempty"`
+	FourquareAPIKey   string `json:"foursquare_api_key,omitempty"`
+	TripitOAuthToken  string `json:"tripit_oauth_token,omitempty"`
+	TripitOAuthSecret string `json:"tripit_oauth_secret,omitempty"`
 }
 
 type secretsManager struct {
