@@ -54,16 +54,7 @@ async function setupMap() {
     // map.fitBounds(group.getBounds());
 
     navigator.geolocation.getCurrentPosition(function (position) {
-        var latLng = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-        };
-
-        // popup.setLatLng(latLng);
-        // popup.setContent('This is your current location');
-        // popup.openOn(geolocationMap);
-
-        map.setView(latLng);
+        map.setView([position.coords.latitude, position.coords.longitude], 13);
     }, function (err) {
         console.log("error getting geolocation: " + err.message);
         map.setView([36.1627, -86.7816], 13);
