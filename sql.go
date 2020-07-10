@@ -336,6 +336,9 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 }
 
 func (s *Storage) migrate(ctx context.Context) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	if _, err := s.db.ExecContext(
 		ctx,
 		`create table if not exists migrations (
