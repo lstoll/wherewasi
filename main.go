@@ -219,7 +219,7 @@ func main() {
 				l.Fatalf("validating foursquare sync command: %v", err)
 			}
 			go func() {
-				sync := func() {
+				for {
 					if base.smgr.secrets.FourquareAPIKey == "" {
 						log.Print("No foursquare API key saved, not running")
 						return
@@ -229,15 +229,12 @@ func main() {
 						// for now, bombing out is an easy way to get attention
 						l.Fatalf("error running foursquare sync: %v", err)
 					}
-				}
-				sync()
-				ticker := time.NewTicker(fsqSyncInterval)
-				for {
+
 					select {
 					case <-ctx.Done():
 						return
-					case <-ticker.C:
-						sync()
+					case <-time.After(fsqSyncInterval):
+						continue
 					}
 				}
 			}()
@@ -256,7 +253,7 @@ func main() {
 			}
 
 			go func() {
-				sync := func() {
+				for {
 					if tpsync.smgr.secrets.TripitOAuthToken == "" || tpsync.smgr.secrets.TripitOAuthSecret == "" {
 						log.Print("No tripit API keys saved, not running")
 						return
@@ -265,15 +262,12 @@ func main() {
 					if err := tpsync.run(ctx); err != nil {
 						l.Fatalf("error running tripit sync: %v", err)
 					}
-				}
-				sync()
-				ticker := time.NewTicker(tpSyncInterval)
-				for {
+
 					select {
 					case <-ctx.Done():
 						return
-					case <-ticker.C:
-						sync()
+					case <-time.After(tpSyncInterval):
+						continue
 					}
 				}
 			}()
