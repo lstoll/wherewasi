@@ -319,6 +319,10 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 		return nil, fmt.Errorf("opening DB: %v", err)
 	}
 
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("ping database: %v", err)
+	}
+
 	s := &Storage{
 		db:  db,
 		log: logger,
