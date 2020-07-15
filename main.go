@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -72,6 +73,7 @@ func main() {
 			basicAuth         bool
 			otUsername        string
 			otPassword        string
+			otRecorderURL     string
 			requireSubject    string
 			disable4sqSync    bool
 			disableTripitSync bool
@@ -87,6 +89,7 @@ func main() {
 
 		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
 		fs.StringVar(&otPassword, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
+		fs.StringVar(&otRecorderURL, "ot-recorder-url", "", "Optional owntracks publish endpoint to proxy device locations to")
 
 		fs.StringVar(&ah.Issuer, "auth-issuer", getEnvDefault("AUTH_ISSUER", ""), "OIDC Issuer (required unless auth disabled)")
 		fs.StringVar(&ah.ClientID, "auth-client-id", getEnvDefault("AUTH_CLIENT_ID", ""), "OIDC Client ID (required unless auth disabled)")
@@ -129,6 +132,14 @@ func main() {
 
 		if otPassword == "" {
 			errs = append(errs, "ot-password required")
+		}
+		if otRecorderURL != "" {
+			u, err := url.Parse(otRecorderURL)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("parse flag ot-recorder-url: %v", err))
+			} else {
+				ots.recorderURL = u
+			}
 		}
 
 		if !disableAuth && !basicAuth {
