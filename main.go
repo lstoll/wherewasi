@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -72,6 +73,7 @@ func main() {
 			basicAuth         bool
 			otUsername        string
 			otPassword        string
+			otRecorderURL     string
 			requireSubject    string
 			disable4sqSync    bool
 			disableTripitSync bool
@@ -87,6 +89,7 @@ func main() {
 
 		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
 		fs.StringVar(&otPassword, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
+		fs.StringVar(&otRecorderURL, "ot-recorder-url", "", "Optional owntracks publish endpoint to proxy device locations to")
 
 		fs.StringVar(&ah.Issuer, "auth-issuer", getEnvDefault("AUTH_ISSUER", ""), "OIDC Issuer (required unless auth disabled)")
 		fs.StringVar(&ah.ClientID, "auth-client-id", getEnvDefault("AUTH_CLIENT_ID", ""), "OIDC Client ID (required unless auth disabled)")
@@ -129,6 +132,14 @@ func main() {
 
 		if otPassword == "" {
 			errs = append(errs, "ot-password required")
+		}
+		if otRecorderURL != "" {
+			u, err := url.Parse(otRecorderURL)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("parse flag ot-recorder-url: %v", err))
+			} else {
+				ots.recorderURL = u
+			}
 		}
 
 		if !disableAuth && !basicAuth {
@@ -219,7 +230,7 @@ func main() {
 				l.Fatalf("validating foursquare sync command: %v", err)
 			}
 			go func() {
-				sync := func() {
+				for {
 					if base.smgr.secrets.FourquareAPIKey == "" {
 						log.Print("No foursquare API key saved, not running")
 						return
@@ -229,15 +240,12 @@ func main() {
 						// for now, bombing out is an easy way to get attention
 						l.Fatalf("error running foursquare sync: %v", err)
 					}
-				}
-				sync()
-				ticker := time.NewTicker(fsqSyncInterval)
-				for {
+
 					select {
 					case <-ctx.Done():
 						return
-					case <-ticker.C:
-						sync()
+					case <-time.After(fsqSyncInterval):
+						continue
 					}
 				}
 			}()
@@ -256,7 +264,7 @@ func main() {
 			}
 
 			go func() {
-				sync := func() {
+				for {
 					if tpsync.smgr.secrets.TripitOAuthToken == "" || tpsync.smgr.secrets.TripitOAuthSecret == "" {
 						log.Print("No tripit API keys saved, not running")
 						return
@@ -265,15 +273,12 @@ func main() {
 					if err := tpsync.run(ctx); err != nil {
 						l.Fatalf("error running tripit sync: %v", err)
 					}
-				}
-				sync()
-				ticker := time.NewTicker(tpSyncInterval)
-				for {
+
 					select {
 					case <-ctx.Done():
 						return
-					case <-ticker.C:
-						sync()
+					case <-time.After(tpSyncInterval):
+						continue
 					}
 				}
 			}()
