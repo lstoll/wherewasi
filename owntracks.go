@@ -39,11 +39,13 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 	msg := owntracksMessage{}
 	rawMsg, err := ioutil.ReadAll(r.Body)
 	if err != nil {
+		metricOTSubmitErrorCount.Inc()
 		o.log.Printf("read owntracks message: %v", err)
 		http.Error(w, fmt.Sprintf("read owntracks message: %v", err), http.StatusInternalServerError)
 		return
 	}
 	if err := json.Unmarshal(rawMsg, &msg); err != nil {
+		metricOTSubmitErrorCount.Inc()
 		o.log.Printf("decoding owntracks message: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -71,6 +73,7 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 
 	// Failed to save location in local database and/or proxy it to recorder.
 	if len(errs) != 0 {
+		metricOTSubmitErrorCount.Inc()
 		http.Error(w, fmt.Sprintf("error: %s", strings.Join(errs, ", ")), http.StatusInternalServerError)
 		return
 	}
@@ -79,6 +82,7 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 	// from a MQTT endpoint
 	w.Header().Set("Content-Type", "application/json")
 	fmt.Fprint(w, `[]`)
+	metricOTSubmitSuccessCount.Inc()
 }
 
 func (o *owntracksServer) proxyLocation(req *http.Request, msg []byte) error {
