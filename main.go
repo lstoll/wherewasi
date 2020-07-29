@@ -355,7 +355,6 @@ func main() {
 					log.Printf("shutting down metrics server: %v", err)
 				}
 				log.Print("returning metrics shutdown")
-
 			})
 		}
 
