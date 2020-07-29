@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -73,16 +74,16 @@ func (m *metricsCollector) Collect(ch chan<- prometheus.Metric) {
 	defer cancel()
 
 	lt, err := m.s.LatestLocationTimestamp(ctx)
-	if err != nil {
-		m.l.Printf("metrics: failed to get latest device location timestamp: %v", err)
-	} else {
+	if err == nil {
 		ch <- prometheus.MustNewConstMetric(m.lastDeviceLocationTime, prometheus.GaugeValue, float64(lt.Unix()))
+	} else {
+		prometheus.NewInvalidMetric(m.lastDeviceLocationTime, fmt.Errorf("get latest device location timestamp: %v", err))
 	}
 
 	lfsq, err := m.s.Last4sqCheckinTime(ctx)
-	if err != nil {
-		m.l.Printf("metrics: failed to get latest foursquare checkin timestamp: %v", err)
-	} else {
+	if err == nil {
 		ch <- prometheus.MustNewConstMetric(m.latestFoursquareCheckin, prometheus.GaugeValue, float64(lfsq.Unix()))
+	} else {
+		prometheus.NewInvalidMetric(m.latestFoursquareCheckin, fmt.Errorf("get latest foursquare checkin timestamp: %v", err))
 	}
 }

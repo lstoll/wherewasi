@@ -332,8 +332,14 @@ func main() {
 		})
 
 		if promListen != "" {
+			ph := promhttp.InstrumentMetricHandler(
+				prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+					ErrorLog: l,
+				}),
+			)
+
 			pm := http.NewServeMux()
-			pm.Handle("/metrics", promhttp.Handler())
+			pm.Handle("/metrics", ph)
 
 			metricsSrv := &http.Server{
 				Addr:    promListen,
