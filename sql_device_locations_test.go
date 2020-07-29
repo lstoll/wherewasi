@@ -52,3 +52,41 @@ func TestAddTakeoutLocation(t *testing.T) {
 		t.Errorf("want 2 rows, got: %d", count)
 	}
 }
+
+func TestLatestLocationTimestamp(t *testing.T) {
+	ctx, s := setupDB(t)
+
+	now := time.Now()
+	earlier := now.Add(-5 * time.Minute)
+
+	for _, msg := range []otLocation{
+		{
+			TimestampUnix: int(now.Unix()),
+		},
+		{
+			TimestampUnix: int(earlier.Unix()),
+		},
+	} {
+		jb, err := json.Marshal(msg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		om := owntracksMessage{
+			Type: "location",
+			Data: jb,
+		}
+		if err := s.AddOTLocation(ctx, om); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	l, err := s.LatestLocationTimestamp(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// round off, db storage is unix time in seconds
+	if !l.Equal(now.Truncate(1 * time.Second)) {
+		t.Errorf("want latest time %s, got: %s", now.String(), l.String())
+	}
+}

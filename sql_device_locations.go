@@ -89,3 +89,15 @@ func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutL
 
 	return nil
 }
+
+// LatestLocationTimestamp returns the time at which the latest location was
+// recorded
+func (s *Storage) LatestLocationTimestamp(ctx context.Context) (time.Time, error) {
+	var timestamp time.Time
+
+	if err := s.db.QueryRowContext(ctx, `select timestamp from device_locations order by timestamp desc limit 1`).Scan(&timestamp); err != nil {
+		return time.Time{}, fmt.Errorf("finding lastest device_locations timestamp: %v", err)
+	}
+
+	return timestamp, nil
+}
