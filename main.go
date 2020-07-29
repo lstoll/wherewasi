@@ -23,6 +23,7 @@ import (
 	"github.com/mattn/go-sqlite3"
 	"github.com/oklog/run"
 	oidcm "github.com/pardot/oidc/middleware"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/oauth2"
@@ -339,6 +340,8 @@ func main() {
 				Handler: pm,
 			}
 
+			prometheus.MustRegister(newMetricsCollector(l, base.storage))
+
 			g.Add(func() error {
 				l.Printf("Listing for metrics on %s", promListen)
 				if err := metricsSrv.ListenAndServe(); err != nil {
@@ -353,24 +356,6 @@ func main() {
 				}
 				log.Print("returning metrics shutdown")
 
-			})
-
-			metrDone := make(chan struct{}, 1)
-			g.Add(func() error {
-				for {
-					if err := collectProcessMetrics(ctx, base.storage); err != nil {
-						return err
-					}
-
-					select {
-					case <-metrDone:
-						return nil
-					case <-time.After(15 * time.Second):
-						continue
-					}
-				}
-			}, func(error) {
-				metrDone <- struct{}{}
 			})
 		}
 

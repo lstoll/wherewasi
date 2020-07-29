@@ -2,22 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
-	metricLastDeviceLocationTime = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "last_device_location_at",
-		Help: "Unix timestamp when of the last device location reported",
-	})
-	metricLatestFoursquareCheckin = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "last_foursquare_checkin_at",
-		Help: "Unix time timestamp when the last foursquare checkin was recorded into the DB",
-	})
-
 	metricOTSubmitSuccessCount = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "owntracks_publish_endpoint_success",
 		Help: "Number of successful requests served at the OwnTracks publishing endpoint",
@@ -46,20 +37,52 @@ var (
 	})
 )
 
-// collectProcessMetrics runs a background task to populate various metrics
-// about the running app. this should be run regularly
-func collectProcessMetrics(ctx context.Context, s *Storage) error {
-	lt, err := s.LatestLocationTimestamp(ctx)
-	if err != nil {
-		return fmt.Errorf("checking latest device location time: %v", err)
-	}
-	metricLastDeviceLocationTime.Set(float64(lt.Unix()))
+var _ prometheus.Collector = (*metricsCollector)(nil)
 
-	lfsq, err := s.Last4sqCheckinTime(ctx)
-	if err != nil {
-		return fmt.Errorf("checking latest foursquare checkin time: %v", err)
-	}
-	metricLatestFoursquareCheckin.Set(float64(lfsq.Unix()))
+type metricsCollector struct {
+	l logger
+	s *Storage
 
-	return nil
+	lastDeviceLocationTime  *prometheus.Desc
+	latestFoursquareCheckin *prometheus.Desc
+}
+
+func newMetricsCollector(l logger, s *Storage) *metricsCollector {
+	return &metricsCollector{
+		l: l,
+		s: s,
+
+		lastDeviceLocationTime: prometheus.NewDesc(
+			"last_device_location_at",
+			"Unix timestamp when of the last device location reported", nil, nil),
+		latestFoursquareCheckin: prometheus.NewDesc(
+			"last_foursquare_checkin_at",
+			"Unix time timestamp when the last foursquare checkin was recorded into the DB", nil, nil),
+	}
+}
+
+func (m *metricsCollector) Describe(ch chan<- *prometheus.Desc) {
+	ch <- m.lastDeviceLocationTime
+	ch <- m.latestFoursquareCheckin
+}
+
+func (m *metricsCollector) Collect(ch chan<- prometheus.Metric) {
+	// we don't get a context from the scrape here, so just create one with a
+	// reasonably timeout to avoid blocking things here
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	lt, err := m.s.LatestLocationTimestamp(ctx)
+	if err != nil {
+		m.l.Printf("metrics: failed to get latest device location timestamp: %v", err)
+	} else {
+		ch <- prometheus.MustNewConstMetric(m.lastDeviceLocationTime, prometheus.GaugeValue, float64(lt.Unix()))
+	}
+
+	lfsq, err := m.s.Last4sqCheckinTime(ctx)
+	if err != nil {
+		m.l.Printf("metrics: failed to get latest foursquare checkin timestamp: %v", err)
+	} else {
+		ch <- prometheus.MustNewConstMetric(m.latestFoursquareCheckin, prometheus.GaugeValue, float64(lfsq.Unix()))
+	}
 }
