@@ -1,4 +1,4 @@
-FROM golang:1.14-buster AS build
+FROM golang:1.14-buster AS backend
 
 WORKDIR /src
 
@@ -11,11 +11,19 @@ RUN go mod download
 COPY . .
 RUN go install ./...
 
+FROM node:14-buster as frontend
+
+WORKDIR /src
+
+COPY . .
+RUN make orion-index.html
+
 FROM debian:buster
 
 RUN apt-get update && \
     apt-get install -y sqlite3 libsqlite3-0 libspatialite7 ca-certificates
 
-COPY --from=build /go/bin/wherewasi /usr/bin/
+COPY --from=backend /go/bin/wherewasi /usr/bin/
+COPY --from=frontend /src/orion-index.html /
 
 CMD ["/usr/bin/wherewasi"]

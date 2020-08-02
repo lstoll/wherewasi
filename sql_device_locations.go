@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -100,4 +101,71 @@ func (s *Storage) LatestLocationTimestamp(ctx context.Context) (time.Time, error
 	}
 
 	return timestamp, nil
+}
+
+type deviceLocationQuery struct {
+	offset         *int
+	limit          *int
+	timestampStart *time.Time
+	timestampEnd   *time.Time
+}
+
+type deviceLocation struct {
+	Lat       float64
+	Lng       float64
+	Accuracy  int
+	Timestamp time.Time
+}
+
+func (s *Storage) QueryLocations(ctx context.Context, q deviceLocationQuery) ([]deviceLocation, error) {
+	sql := "select lat, lng, accuracy, timestamp from device_locations "
+	sqlArgs := []interface{}{}
+
+	whereConds := []string{}
+
+	if q.timestampStart != nil {
+		whereConds = append(whereConds, "timestamp > ?")
+		sqlArgs = append(sqlArgs, *q.timestampStart)
+	}
+	if q.timestampEnd != nil {
+		whereConds = append(whereConds, "timestamp < ?")
+		sqlArgs = append(sqlArgs, *q.timestampEnd)
+	}
+
+	if len(whereConds) > 0 {
+		sql += "where " + strings.Join(whereConds, " and ")
+	}
+
+	sql += " order by timestamp desc"
+
+	if q.limit != nil {
+		sql += " limit ?"
+		sqlArgs = append(sqlArgs, *q.limit)
+	}
+	if q.offset != nil {
+		sql += " offset ?"
+		sqlArgs = append(sqlArgs, *q.offset)
+	}
+
+	s.log.Printf("query: %q args: %v", sql, sqlArgs)
+
+	rows, err := s.db.QueryContext(ctx, sql, sqlArgs...)
+	if err != nil {
+		s.log.Printf("Failed on query %q: %v", sql, err)
+		return nil, fmt.Errorf("querying locations: %v", err)
+	}
+	defer rows.Close()
+
+	ret := []deviceLocation{}
+
+	for rows.Next() {
+		var loc deviceLocation
+		if err := rows.Scan(&loc.Lat, &loc.Lng, &loc.Accuracy, &loc.Timestamp); err != nil {
+			return nil, fmt.Errorf("scanning row: %v", err)
+		}
+
+		ret = append(ret, loc)
+	}
+
+	return ret, nil
 }

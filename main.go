@@ -61,7 +61,9 @@ func main() {
 			log: l,
 		}
 
-		ws := &web{}
+		ws := &web{
+			log: l,
+		}
 
 		ah := &oidcm.Handler{}
 
@@ -114,6 +116,9 @@ func main() {
 		fs.StringVar(&ws.fsqOauthConfig.ClientID, "fsq-client-id", getEnvDefault("FSQ_CLIENT_ID", ""), "Oauth2 Client ID")
 		fs.StringVar(&ws.fsqOauthConfig.ClientSecret, "fsq-client-secret", getEnvDefault("FSQ_CLIENT_SECRET", ""), "Oauth2 Client Secret")
 
+		// https://account.mapbox.com/access-tokens
+		fs.StringVar(&ws.mapboxAPIToken, "mapbox-api-token", getEnvDefault("MAPBOX_API_TOKEN", ""), "Mapbox API token, required for web UI")
+
 		// https://www.tripit.com/developer
 		fs.BoolVar(&disableTripitSync, "tripit-sync-disabled", false, "Disable background tripit sync")
 		fs.DurationVar(&tpSyncInterval, "tripit-sync-interval", 6*time.Hour, "How often we should sync tripit in the background")
@@ -125,6 +130,7 @@ func main() {
 		base.Parse(ctx, l)
 
 		ws.smgr = base.smgr
+		ws.store = base.storage
 
 		var errs []string
 

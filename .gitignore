@@ -1,3 +1,4 @@
 /bin/golangci-lint*
 /db
 /.env
+/orion-index.html
