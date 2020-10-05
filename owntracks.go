@@ -74,6 +74,7 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 	// Failed to save location in local database and/or proxy it to recorder.
 	if len(errs) != 0 {
 		metricOTSubmitErrorCount.Inc()
+		o.log.Printf("persisting device location: %s", strings.Join(errs, ", "))
 		http.Error(w, fmt.Sprintf("error: %s", strings.Join(errs, ", ")), http.StatusInternalServerError)
 		return
 	}
