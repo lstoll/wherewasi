@@ -15,9 +15,6 @@ import (
 // }
 
 func (s *Storage) Upsert4sqCheckin(ctx context.Context, checkin fsqCheckin) (string, error) {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	if checkin.ID == "" {
 		return "", fmt.Errorf("checkin has no foursquare ID")
 	}
@@ -46,9 +43,6 @@ where fsq_id=$9`,
 // up-to-date user entries for them. Also denormalizes the checkin with
 // information in to the database record.
 func (s *Storage) Sync4sqUsers(ctx context.Context) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	txErr := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		// run against all checkins
 		rows, err := tx.QueryContext(ctx,
@@ -123,9 +117,6 @@ func (s *Storage) Sync4sqUsers(ctx context.Context) error {
 // Sync4sqVenues finds all foursquare checkins in the DB, and ensures there are
 // up-to-date venue entries for them.
 func (s *Storage) Sync4sqVenues(ctx context.Context) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	txErr := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		// run against all checkins
 		rows, err := tx.QueryContext(ctx,

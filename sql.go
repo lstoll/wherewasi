@@ -304,11 +304,7 @@ var migrations = []migration{
 }
 
 type Storage struct {
-	db *sql.DB
-
-	// go-sqlite supports concurrent reads, but not writes. Queries that write
-	// should use this mutex to synchronize that access
-	writeMu sync.Mutex
+	db *safeDB
 
 	log logger
 }
@@ -324,7 +320,7 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 	}
 
 	s := &Storage{
-		db:  db,
+		db:  &safeDB{DB: db},
 		log: logger,
 	}
 
@@ -340,9 +336,6 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 }
 
 func (s *Storage) migrate(ctx context.Context) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	if _, err := s.db.ExecContext(
 		ctx,
 		`create table if not exists migrations (
@@ -445,4 +438,21 @@ func integrityCheck(ctx context.Context, conn *sql.DB) error {
 	}
 
 	return fmt.Errorf("integrity problems: %s", strings.Join(res, ", "))
+}
+
+// https://github.com/mattn/go-sqlite3#faq
+type safeDB struct {
+	*sql.DB
+	mu sync.Mutex
+}
+
+func (db *safeDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	return db.DB.ExecContext(ctx, query, args...)
+}
+func (db *safeDB) Exec(query string, args ...interface{}) (sql.Result, error) {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	return db.DB.Exec(query, args...)
 }
