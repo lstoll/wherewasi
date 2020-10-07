@@ -513,7 +513,7 @@ func (b *baseCommand) Parse(ctx context.Context, logger logger) {
 		os.Exit(1)
 	}
 
-	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?_foreign_keys=on", filepath.Join(b.dbPath, mainDBFile)))
+	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?cache=shared&_foreign_keys=on", filepath.Join(b.dbPath, mainDBFile)))
 	if err != nil {
 		logger.Fatalf("creating storage: %v", err)
 	}
