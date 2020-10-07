@@ -77,13 +77,13 @@ func (m *metricsCollector) Collect(ch chan<- prometheus.Metric) {
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(m.lastDeviceLocationTime, prometheus.GaugeValue, float64(lt.Unix()))
 	} else {
-		prometheus.NewInvalidMetric(m.lastDeviceLocationTime, fmt.Errorf("get latest device location timestamp: %v", err))
+		ch <- prometheus.NewInvalidMetric(m.lastDeviceLocationTime, fmt.Errorf("get latest device location timestamp: %v", err))
 	}
 
 	lfsq, err := m.s.Last4sqCheckinTime(ctx)
 	if err == nil {
 		ch <- prometheus.MustNewConstMetric(m.latestFoursquareCheckin, prometheus.GaugeValue, float64(lfsq.Unix()))
 	} else {
-		prometheus.NewInvalidMetric(m.latestFoursquareCheckin, fmt.Errorf("get latest foursquare checkin timestamp: %v", err))
+		ch <- prometheus.NewInvalidMetric(m.latestFoursquareCheckin, fmt.Errorf("get latest foursquare checkin timestamp: %v", err))
 	}
 }
