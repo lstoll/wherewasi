@@ -86,6 +86,14 @@
             <input type="text" class="datepicker" id="from" name="from" value="{{.From}}">
             <label for="to">To:</label>
             <input type="text" class="datepicker" id="to" name="to" value="{{.To}}">
+            <label for="acc">Accuracy:</label>
+            <select name="acc" id="acc">
+                <option value="50" {{ if lt .Accuracy 75 }} selected="selected"{{ end }}>50</option>
+                <option value="100" {{ if and (gt .Accuracy 75) (lt .Accuracy 175) }} selected="selected"{{ end }}>100</option>
+                <option value="250" {{ if and (gt .Accuracy 175) (lt .Accuracy 2375) }} selected="selected"{{ end }}>250</option>
+                <option value="5000" {{ if and (gt .Accuracy 2375) (lt .Accuracy 7500) }} selected="selected"{{ end }}>5000</option>
+                <option value="5000" {{ if gt .Accuracy 7500 }} selected="selected"{{ end }}>20000</option>
+            </select>
             <input type="submit">
         </form>
     </div>

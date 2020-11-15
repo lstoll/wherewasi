@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,8 @@ type indexData struct {
 
 	From string
 	To   string
+
+	Accuracy int
 }
 
 func (w *web) index(rw http.ResponseWriter, r *http.Request) {
@@ -47,8 +50,9 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		from = time.Now().Add(-7 * 24 * time.Hour)
-		to   = time.Now()
+		from     = time.Now().Add(-7 * 24 * time.Hour)
+		to       = time.Now()
+		accuracy = 100
 	)
 
 	if r.URL.Query().Get("from") != "" {
@@ -71,7 +75,19 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		to = t
 	}
 
+	if r.URL.Query().Get("acc") != "" {
+		a, err := strconv.Atoi(r.URL.Query().Get("acc"))
+		if err != nil {
+			w.log.Printf("parsing acc %v", err)
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		accuracy = a
+	}
+
 	// make it to the end of the "to" day
+	// TODO timezone awareness? Or move to EU where it's all closer to UTC
+	// anyway
 	rl, err := w.store.RecentLocations(r.Context(), from, to.Add(24*time.Hour-1*time.Second))
 	if err != nil {
 		w.log.Printf("getting recent locations: %v", err)
@@ -82,7 +98,9 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 	var coords [][]float64
 
 	for _, l := range rl {
-		coords = append(coords, []float64{l.Lng, l.Lat})
+		if l.Accuracy <= accuracy {
+			coords = append(coords, []float64{l.Lng, l.Lat})
+		}
 	}
 
 	feat := geojson.NewFeature(geojson.NewMultiPointGeometry(coords...))
@@ -99,6 +117,8 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 
 		From: from.Format("2006-01-02"),
 		To:   to.Format("2006-01-02"),
+
+		Accuracy: accuracy,
 	}
 
 	t, err := template.ParseFiles("index.tmpl.html")

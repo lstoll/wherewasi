@@ -19,7 +19,7 @@ RUN apt-get update && \
     apt-get install -y sqlite3 libsqlite3-0 libspatialite7 ca-certificates
 
 COPY *.html /app/
-COPY static/ *.html /app/static/
+# COPY static/ *.html /app/static/
 
 COPY --from=build /go/bin/wherewasi /usr/bin/
 
