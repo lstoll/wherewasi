@@ -35,12 +35,15 @@ type web struct {
 }
 
 type indexData struct {
-	GeoJSON string
+	DeviceLocations    template.JS
+	DeviceLocationLine template.JS
 
 	From string
 	To   string
 
 	Accuracy int
+
+	Line bool
 }
 
 func (w *web) index(rw http.ResponseWriter, r *http.Request) {
@@ -53,6 +56,7 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		from     = time.Now().Add(-7 * 24 * time.Hour)
 		to       = time.Now()
 		accuracy = 100
+		drawLine = false
 	)
 
 	if r.URL.Query().Get("from") != "" {
@@ -85,6 +89,10 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		accuracy = a
 	}
 
+	if r.URL.Query().Get("line") == "on" {
+		drawLine = true
+	}
+
 	// make it to the end of the "to" day
 	// TODO timezone awareness? Or move to EU where it's all closer to UTC
 	// anyway
@@ -96,6 +104,7 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	features := geojson.NewFeatureCollection()
+	linePoints := [][]float64{}
 
 	for _, l := range rl {
 		if l.Accuracy <= accuracy {
@@ -106,11 +115,17 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 			features.AddFeature(&geojson.Feature{
 				Geometry: geojson.NewPointGeometry([]float64{l.Lng, l.Lat}),
 				Properties: map[string]interface{}{
+					"accuracy":     l.Accuracy,
 					"popupContent": fmt.Sprintf("At: %s<br>Velocity: %d km/h", l.Timestamp.String(), vel),
 				},
 			})
+			if drawLine {
+				linePoints = append(linePoints, []float64{l.Lng, l.Lat})
+			}
 		}
 	}
+
+	line := geojson.NewMultiLineStringFeature(linePoints)
 
 	geoJSON, err := json.Marshal(features)
 	if err != nil {
@@ -119,13 +134,23 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	lineJSON, err := json.Marshal(line)
+	if err != nil {
+		w.log.Printf("marshaling lineJSON: %v", err)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	tmpData := indexData{
-		GeoJSON: string(geoJSON),
+		DeviceLocations:    template.JS(geoJSON),
+		DeviceLocationLine: template.JS(lineJSON),
 
 		From: from.Format("2006-01-02"),
 		To:   to.Format("2006-01-02"),
 
 		Accuracy: accuracy,
+
+		Line: drawLine,
 	}
 
 	t, err := template.ParseFiles("index.tmpl.html")
