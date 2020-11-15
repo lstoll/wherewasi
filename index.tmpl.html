@@ -39,7 +39,9 @@
         });
 
         $(function () {
-            $(".datepicker").datepicker();
+            $(".datepicker").datepicker({
+                dateFormat: 'yy-mm-dd',
+            });
         });
     </script>
     <style>
@@ -79,10 +81,13 @@
 
 <body>
     <div id="query" class="row">
-        <label for="from">From:</label>
-        <input type="date" class="datepicker" id="from" name="from">
-        <label for="to">To:</label>
-        <input type="date" class="datepicker" id="to" name="to">
+        <form method="GET">
+            <label for="from">From:</label>
+            <input type="text" class="datepicker" id="from" name="from" value="{{.From}}">
+            <label for="to">To:</label>
+            <input type="text" class="datepicker" id="to" name="to" value="{{.To}}">
+            <input type="submit">
+        </form>
     </div>
 
     <div id="map-container">

@@ -35,6 +35,9 @@ type web struct {
 
 type indexData struct {
 	GeoJSON string
+
+	From string
+	To   string
 }
 
 func (w *web) index(rw http.ResponseWriter, r *http.Request) {
@@ -43,7 +46,33 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rl, err := w.store.RecentLocations(r.Context(), 7*24*time.Hour)
+	var (
+		from = time.Now().Add(-7 * 24 * time.Hour)
+		to   = time.Now()
+	)
+
+	if r.URL.Query().Get("from") != "" {
+		f, err := time.Parse("2006-01-02", r.URL.Query().Get("from"))
+		if err != nil {
+			w.log.Printf("parsing from %v", err)
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		from = f
+	}
+
+	if r.URL.Query().Get("to") != "" {
+		t, err := time.Parse("2006-01-02", r.URL.Query().Get("to"))
+		if err != nil {
+			w.log.Printf("parsing to %v", err)
+			http.Error(rw, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		to = t
+	}
+
+	// make it to the end of the "to" day
+	rl, err := w.store.RecentLocations(r.Context(), from, to.Add(24*time.Hour-1*time.Second))
 	if err != nil {
 		w.log.Printf("getting recent locations: %v", err)
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -65,12 +94,19 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tmpData := indexData{
+		GeoJSON: string(geoJSON),
+
+		From: from.Format("2006-01-02"),
+		To:   to.Format("2006-01-02"),
+	}
+
 	t, err := template.ParseFiles("index.tmpl.html")
 	if err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := t.Execute(rw, indexData{GeoJSON: string(geoJSON)}); err != nil {
+	if err := t.Execute(rw, tmpData); err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}

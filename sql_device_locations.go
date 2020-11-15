@@ -96,9 +96,9 @@ func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutL
 	return nil
 }
 
-func (s *Storage) RecentLocations(ctx context.Context, lastPeriod time.Duration) ([]DeviceLocation, error) {
+func (s *Storage) RecentLocations(ctx context.Context, from, to time.Time) ([]DeviceLocation, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`select lat, lng, accuracy from device_locations where timestamp > ? order by timestamp desc`, time.Now().Add(-lastPeriod))
+		`select lat, lng, accuracy from device_locations where timestamp > ? and timestamp < ? order by timestamp asc`, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("getting locations: %v", err)
 	}
