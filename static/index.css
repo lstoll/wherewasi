@@ -1,8 +1,25 @@
-div#mapid {
-    width: 100%;
-    height: 800px; /* why does % not work? */
+html,
+body {
+  margin: 0px;
+  height: 100%;
 }
 
-div#query {
-    height: 50px;
+body {
+  display: flex;
+  flex-flow: column wrap;
+}
+
+#query {
+  flex: 0;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+#map-container {
+  flex: 1 1;
+  display: flex;
+}
+
+#map-canvas {
+  flex: 1;
 }

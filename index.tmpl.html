@@ -2,7 +2,6 @@
 <html>
 
 <head>
-
     <title>Wherewasi</title>
 
     <meta charset="utf-8" />
@@ -19,20 +18,24 @@
 
     <link rel="stylesheet" href="/static/index.css">
     <script src="/static/index.js"></script>
-
-
-    <style>
-    </style>
-
 </head>
 
 <body>
-
-    <div id="query">
+    <div id="query" class="row">
+        <label for="from">From:</label>
+        <input type="date" id="from" name="from">
+        <label for="to">To:</label>
+        <input type="date" id="to" name="to">
     </div>
-    <div id="mapcontainer">
-        <div id="mapid"></div>
+
+    <div id="map-container">
+        <div id="map-canvas"></div>
     </div>
 </body>
+
+<script>
+    var geoJSON = JSON.parse({{ .GeoJSON }});
+    document.addEventListener("DOMContentLoaded", function () { setupMap(geoJSON) });
+</script>
 
 </html>

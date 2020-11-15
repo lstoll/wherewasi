@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ancientlore/go-tripit"
+	geojson "github.com/paulmach/go.geojson"
 	"golang.org/x/oauth2"
 )
 
@@ -32,24 +33,15 @@ type web struct {
 	tripitAPISecret string
 }
 
+type indexData struct {
+	GeoJSON string
+}
+
 func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.Error(rw, "Not Found", http.StatusNotFound)
 		return
 	}
-	t, err := template.ParseFiles("index.tmpl.html")
-	if err != nil {
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := t.Execute(rw, nil); err != nil {
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
-func (w *web) recentPoints(rw http.ResponseWriter, r *http.Request) {
-	rw.Header().Set("Content-Type", "application/json")
 
 	rl, err := w.store.RecentLocations(r.Context(), 7*24*time.Hour)
 	if err != nil {
@@ -58,8 +50,27 @@ func (w *web) recentPoints(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := json.NewEncoder(rw).Encode(rl); err != nil {
-		w.log.Printf("getting recent locations: %v", err)
+	var coords [][]float64
+
+	for _, l := range rl {
+		coords = append(coords, []float64{l.Lng, l.Lat})
+	}
+
+	feat := geojson.NewFeature(geojson.NewMultiPointGeometry(coords...))
+
+	geoJSON, err := json.Marshal(feat)
+	if err != nil {
+		w.log.Printf("marshaling geoJSON: %v", err)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	t, err := template.ParseFiles("index.tmpl.html")
+	if err != nil {
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if err := t.Execute(rw, indexData{GeoJSON: string(geoJSON)}); err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -128,7 +139,6 @@ func (w *web) init() {
 		w.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 		w.mux.HandleFunc("/", w.index)
-		w.mux.HandleFunc("/recent", w.recentPoints)
 
 		w.mux.HandleFunc("/connect", w.connect)
 		w.mux.HandleFunc("/connect/fsqcallback", w.fsqcallback)
