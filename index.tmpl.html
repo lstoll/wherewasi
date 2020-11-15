@@ -32,16 +32,30 @@
                 attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(map);
 
-            var features = L.geoJSON(geoJSON, {
-                onEachFeature: function (feature, layer) {
+            var features = L.geoJSON(deviceLocations, {
+                onEachFeature: (feature, layer) => {
                     if (feature.properties && feature.properties.popupContent) {
                         layer.bindPopup(feature.properties.popupContent);
                     }
-                }
+                },
+                pointToLayer: (feature, latlng) => {
+                    if (feature.properties.accuracy) {
+                        return new L.Circle(latlng, feature.properties.accuracy);
+                    } else {
+                        return new L.Marker(latlng);
+                    }
+                },
             });
             features.addTo(map);
 
-            map.fitBounds(features.getBounds());
+            if (drawLine) {
+                L.geoJSON(deviceLine).addTo(map);
+            }
+
+            // cannot get bounds on circles, so use a default set
+            // to figure stuff out https://github.com/Leaflet/Leaflet/issues/4978
+            var boundFeatures = L.geoJSON(deviceLocations)
+            map.fitBounds(boundFeatures.getBounds());
         });
 
         $(function () {
@@ -103,6 +117,8 @@
                     5000</option>
                 <option value="5000" {{ if gt .Accuracy 7500 }} selected="selected" {{ end }}>20000</option>
             </select>
+            <label for="line">Render path: </label>
+            <input type="checkbox" name="line" id="line" {{ if .Line }} checked {{ end }}>
             <input type="submit">
         </form>
     </div>
@@ -114,7 +130,9 @@
 
 <script>
     // hide this down here because it's just a big block of data
-    const geoJSON = {{ .GeoJSON }};
+    const deviceLocations = {{ .DeviceLocations }};
+    const deviceLine = {{ .DeviceLocationLine }};
+    const drawLine = {{ .Line }};
 </script>
 
 </html>
