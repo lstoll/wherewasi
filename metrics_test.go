@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -14,19 +14,9 @@ import (
 )
 
 func TestMetrics(t *testing.T) {
-	// TODO(sr) Use t.TempFile after upgrading to Go 1.15
-	tmpfile, err := ioutil.TempFile("", t.Name())
-	if err != nil {
-		t.Fatalf("TempFile: %v", err)
-	}
-	t.Cleanup(func() {
-		tmpfile.Close()
-		os.Remove(tmpfile.Name())
-	})
-
 	ctx := context.Background()
 	logger := log.New(os.Stderr, "", log.LstdFlags)
-	db := fmt.Sprintf("file:%s?cache=shared&mode=memory&_foreign_keys=on", tmpfile.Name())
+	db := fmt.Sprintf("file:%s?cache=shared&mode=memory&_foreign_keys=on", filepath.Join(t.TempDir(), "metrics.db"))
 
 	st, err := newStorage(ctx, logger, db)
 	if err != nil {
