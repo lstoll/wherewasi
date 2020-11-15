@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ancientlore/go-tripit"
 	"golang.org/x/oauth2"
@@ -50,7 +51,7 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 func (w *web) recentPoints(rw http.ResponseWriter, r *http.Request) {
 	rw.Header().Set("Content-Type", "application/json")
 
-	rl, err := w.store.RecentLocations(r.Context(), 500)
+	rl, err := w.store.RecentLocations(r.Context(), 7*24*time.Hour)
 	if err != nil {
 		w.log.Printf("getting recent locations: %v", err)
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
