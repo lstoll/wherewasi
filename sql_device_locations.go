@@ -12,9 +12,11 @@ import (
 var _ owntracksStore = (*Storage)(nil)
 
 type DeviceLocation struct {
-	Lat      float64 `json:"lat"`
-	Lng      float64 `json:"lng"`
-	Accuracy int     `json:"accuracy"`
+	Lat       float64   `json:"lat"`
+	Lng       float64   `json:"lng"`
+	Accuracy  int       `json:"accuracy"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
+	Velocity  *int      `json:"velocity,omitempty"`
 }
 
 func (s *Storage) AddOTLocation(ctx context.Context, msg owntracksMessage) error {
@@ -98,7 +100,7 @@ func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutL
 
 func (s *Storage) RecentLocations(ctx context.Context, from, to time.Time) ([]DeviceLocation, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`select lat, lng, accuracy from device_locations where timestamp > ? and timestamp < ? order by timestamp asc`, from, to)
+		`select lat, lng, accuracy, timestamp, velocity from device_locations where timestamp > ? and timestamp < ? order by timestamp asc`, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("getting locations: %v", err)
 	}
@@ -108,7 +110,13 @@ func (s *Storage) RecentLocations(ctx context.Context, from, to time.Time) ([]De
 
 	for rows.Next() {
 		var loc DeviceLocation
-		if err := rows.Scan(&loc.Lat, &loc.Lng, &loc.Accuracy); err != nil {
+		if err := rows.Scan(
+			&loc.Lat,
+			&loc.Lng,
+			&loc.Accuracy,
+			&loc.Timestamp,
+			&loc.Velocity,
+		); err != nil {
 			return nil, fmt.Errorf("scanning row: %v", err)
 		}
 

@@ -95,17 +95,24 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var coords [][]float64
+	features := geojson.NewFeatureCollection()
 
 	for _, l := range rl {
 		if l.Accuracy <= accuracy {
-			coords = append(coords, []float64{l.Lng, l.Lat})
+			vel := 0
+			if l.Velocity != nil {
+				vel = *l.Velocity
+			}
+			features.AddFeature(&geojson.Feature{
+				Geometry: geojson.NewPointGeometry([]float64{l.Lng, l.Lat}),
+				Properties: map[string]interface{}{
+					"popupContent": fmt.Sprintf("At: %s<br>Velocity: %d km/h", l.Timestamp.String(), vel),
+				},
+			})
 		}
 	}
 
-	feat := geojson.NewFeature(geojson.NewMultiPointGeometry(coords...))
-
-	geoJSON, err := json.Marshal(feat)
+	geoJSON, err := json.Marshal(features)
 	if err != nil {
 		w.log.Printf("marshaling geoJSON: %v", err)
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
