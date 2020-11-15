@@ -136,7 +136,7 @@ func (w *web) init() {
 	w.monce.Do(func() {
 		w.mux = http.NewServeMux()
 
-		w.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
+		// w.mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 		w.mux.HandleFunc("/", w.index)
 
