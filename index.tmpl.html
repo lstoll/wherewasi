@@ -32,7 +32,7 @@
                 attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(map);
 
-            var features = L.geoJSON(deviceLocations, {
+            L.geoJSON(deviceLocations, {
                 onEachFeature: (feature, layer) => {
                     if (feature.properties && feature.properties.popupContent) {
                         layer.bindPopup(feature.properties.popupContent);
@@ -45,8 +45,21 @@
                         return new L.Marker(latlng);
                     }
                 },
-            });
-            features.addTo(map);
+            }).addTo(map);
+
+            L.geoJSON(checkins, {
+                pointToLayer: (feature, latlng) => {
+                    return new L.Marker(latlng, {
+                        title: feature.properties.venueName,
+                    }).bindTooltip(feature.properties.venueName,
+                        {
+                            permanent: true,
+                            direction: 'right'
+                        }
+                    ).bindPopup(feature.properties.popupContent);
+                },
+            }).addTo(map);
+
 
             if (drawLine) {
                 L.geoJSON(deviceLine).addTo(map);
@@ -133,6 +146,7 @@
     const deviceLocations = {{ .DeviceLocations }};
     const deviceLine = {{ .DeviceLocationLine }};
     const drawLine = {{ .Line }};
+    const checkins = {{ .Checkins }};
 </script>
 
 </html>

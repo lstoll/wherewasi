@@ -37,6 +37,7 @@ type web struct {
 type indexData struct {
 	DeviceLocations    template.JS
 	DeviceLocationLine template.JS
+	Checkins           template.JS
 
 	From string
 	To   string
@@ -103,8 +104,16 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	features := geojson.NewFeatureCollection()
+	cis, err := w.store.GetCheckins(r.Context(), from, to.Add(24*time.Hour-1*time.Second))
+	if err != nil {
+		w.log.Printf("getting checkins: %v", err)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	deviceLocations := geojson.NewFeatureCollection()
 	linePoints := [][]float64{}
+	checkins := geojson.NewFeatureCollection()
 
 	for _, l := range rl {
 		if l.Accuracy <= accuracy {
@@ -112,7 +121,7 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 			if l.Velocity != nil {
 				vel = *l.Velocity
 			}
-			features.AddFeature(&geojson.Feature{
+			deviceLocations.AddFeature(&geojson.Feature{
 				Geometry: geojson.NewPointGeometry([]float64{l.Lng, l.Lat}),
 				Properties: map[string]interface{}{
 					"accuracy":     l.Accuracy,
@@ -124,10 +133,20 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-
 	line := geojson.NewMultiLineStringFeature(linePoints)
 
-	geoJSON, err := json.Marshal(features)
+	for _, ci := range cis {
+		checkins.AddFeature(&geojson.Feature{
+			Geometry: geojson.NewPointGeometry([]float64{ci.VenueLng, ci.VenueLat}),
+			Properties: map[string]interface{}{
+				"venueName":    ci.VenueName,
+				"popupContent": fmt.Sprintf("At: %s<br>With: %s<br>Time: %s", ci.VenueName, strings.Join(ci.With, ", "), ci.Timestamp.String()),
+			},
+		})
+
+	}
+
+	geoJSON, err := json.Marshal(deviceLocations)
 	if err != nil {
 		w.log.Printf("marshaling geoJSON: %v", err)
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -141,9 +160,17 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	checkinsJSON, err := json.Marshal(checkins)
+	if err != nil {
+		w.log.Printf("marshaling checkinsJSON: %v", err)
+		http.Error(rw, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	tmpData := indexData{
 		DeviceLocations:    template.JS(geoJSON),
 		DeviceLocationLine: template.JS(lineJSON),
+		Checkins:           template.JS(checkinsJSON),
 
 		From: from.Format("2006-01-02"),
 		To:   to.Format("2006-01-02"),
