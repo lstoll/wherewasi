@@ -6,12 +6,14 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -19,7 +21,10 @@ import (
 	"time"
 
 	"github.com/mattn/go-sqlite3"
+	"github.com/oklog/run"
 	oidcm "github.com/pardot/oidc/middleware"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/oauth2"
 )
@@ -68,12 +73,14 @@ func main() {
 
 		var (
 			listen            string
+			promListen        string
 			baseURL           string
 			disableAuth       bool
 			secureKeyFlag     string
 			basicAuth         bool
 			otUsername        string
 			otPassword        string
+			otRecorderURL     string
 			requireSubject    string
 			disable4sqSync    bool
 			disableTripitSync bool
@@ -84,11 +91,13 @@ func main() {
 		fs := flag.NewFlagSet("serve", flag.ExitOnError)
 		base.AddFlags(fs)
 		fs.StringVar(&listen, "listen", getEnvDefault("LISTEN", "localhost:8080"), "Address to listen on")
+		fs.StringVar(&promListen, "metrics-listen", getEnvDefault("METRICS_LISTEN", ""), "Address to serve metrics on (prom at /metrics), if set")
 		fs.StringVar(&secureKeyFlag, "secure-key", getEnvDefault("SECURE_KEY", ""), "Key used to encrypt/verify information like cookies")
 		fs.StringVar(&baseURL, "base-url", getEnvDefault("BASE_URL", "http://localhost:8080"), "Base URL this service runs on")
 
 		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
 		fs.StringVar(&otPassword, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
+		fs.StringVar(&otRecorderURL, "ot-recorder-url", "", "Optional owntracks publish endpoint to proxy device locations to")
 
 		fs.StringVar(&ah.Issuer, "auth-issuer", getEnvDefault("AUTH_ISSUER", ""), "OIDC Issuer (required unless auth disabled)")
 		fs.StringVar(&ah.ClientID, "auth-client-id", getEnvDefault("AUTH_CLIENT_ID", ""), "OIDC Client ID (required unless auth disabled)")
@@ -132,6 +141,14 @@ func main() {
 
 		if otPassword == "" {
 			errs = append(errs, "ot-password required")
+		}
+		if otRecorderURL != "" {
+			u, err := url.Parse(otRecorderURL)
+			if err != nil {
+				errs = append(errs, fmt.Sprintf("parse flag ot-recorder-url: %v", err))
+			} else {
+				ots.recorderURL = u
+			}
 		}
 
 		if !disableAuth && !basicAuth {
@@ -210,6 +227,8 @@ func main() {
 			}))
 		}
 
+		var g run.Group
+
 		if !disable4sqSync {
 			if ws.fsqOauthConfig.ClientID == "" || ws.fsqOauthConfig.ClientSecret == "" {
 				l.Fatal("foursquare oauth2 config not set")
@@ -221,29 +240,34 @@ func main() {
 			if err := fssync.Validate(); err != nil {
 				l.Fatalf("validating foursquare sync command: %v", err)
 			}
-			go func() {
-				sync := func() {
-					if base.smgr.secrets.FourquareAPIKey == "" {
-						log.Print("No foursquare API key saved, not running")
-						return
-					}
-					l.Print("Running foursquare sync")
-					if err := fssync.run(ctx); err != nil {
-						// for now, bombing out is an easy way to get attention
-						l.Fatalf("error running foursquare sync: %v", err)
-					}
-				}
-				sync()
-				ticker := time.NewTicker(fsqSyncInterval)
+
+			fsqSyncDone := make(chan struct{}, 1)
+			g.Add(func() error {
 				for {
+					if base.smgr.secrets.FourquareAPIKey == "" {
+						metric4sqSyncErrorCount.Inc()
+						l.Printf("no foursquare API key saved, not running")
+					} else {
+						l.Print("Running foursquare sync")
+						if err := fssync.run(ctx); err != nil {
+							metric4sqSyncErrorCount.Inc()
+							l.Printf("error running foursquare sync: %v", err)
+						} else {
+							metric4sqSyncSuccessCount.Inc()
+						}
+					}
+
 					select {
-					case <-ctx.Done():
-						return
-					case <-ticker.C:
-						sync()
+					case <-fsqSyncDone:
+						return nil
+					case <-time.After(fsqSyncInterval):
+						continue
 					}
 				}
-			}()
+			}, func(error) {
+				fsqSyncDone <- struct{}{}
+				log.Print("returning fsq shutdown")
+			})
 		}
 
 		if !disableTripitSync {
@@ -258,34 +282,100 @@ func main() {
 				l.Fatalf("validating tripit sync command: %v", err)
 			}
 
-			go func() {
-				sync := func() {
-					if tpsync.smgr.secrets.TripitOAuthToken == "" || tpsync.smgr.secrets.TripitOAuthSecret == "" {
-						log.Print("No tripit API keys saved, not running")
-						return
-					}
-					l.Print("Running tripit sync")
-					if err := tpsync.run(ctx); err != nil {
-						l.Fatalf("error running tripit sync: %v", err)
-					}
-				}
-				sync()
-				ticker := time.NewTicker(tpSyncInterval)
+			tripitSyncDone := make(chan struct{}, 1)
+			g.Add(func() error {
 				for {
+					if tpsync.smgr.secrets.TripitOAuthToken == "" || tpsync.smgr.secrets.TripitOAuthSecret == "" {
+						metricTripitSyncErrorCount.Inc()
+						l.Print("No tripit API keys saved, not running")
+					} else {
+						l.Print("Running tripit sync")
+						if err := tpsync.run(ctx); err != nil {
+							metricTripitSyncErrorCount.Inc()
+							l.Printf("error running tripit sync: %v", err)
+						} else {
+							metricTripitSyncSuccessCount.Inc()
+						}
+					}
+
 					select {
-					case <-ctx.Done():
-						return
-					case <-ticker.C:
-						sync()
+					case <-tripitSyncDone:
+						return nil
+					case <-time.After(tpSyncInterval):
+						continue
 					}
 				}
-			}()
+			}, func(error) {
+				tripitSyncDone <- struct{}{}
+				log.Print("returning tripit shutdown")
+
+			})
 
 		}
 
-		l.Printf("Listing on %s", listen)
-		if err := http.ListenAndServe(listen, mux); err != nil {
-			l.Fatalf("Error serving: %v", err)
+		mainSrv := &http.Server{
+			Addr:    listen,
+			Handler: mux,
+		}
+
+		g.Add(func() error {
+			l.Printf("Listing on %s", listen)
+			if err := mainSrv.ListenAndServe(); err != nil {
+				return fmt.Errorf("serving http: %v", err)
+			}
+			return nil
+		}, func(error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := mainSrv.Shutdown(ctx); err != nil {
+				l.Printf("shutting down main http server: %v", err)
+			}
+			log.Print("returning http shutdown")
+
+		})
+
+		if promListen != "" {
+			ph := promhttp.InstrumentMetricHandler(
+				prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+					ErrorLog: l,
+				}),
+			)
+
+			pm := http.NewServeMux()
+			pm.Handle("/metrics", ph)
+
+			metricsSrv := &http.Server{
+				Addr:    promListen,
+				Handler: pm,
+			}
+
+			prometheus.MustRegister(newMetricsCollector(l, base.storage))
+
+			g.Add(func() error {
+				l.Printf("Listing for metrics on %s", promListen)
+				if err := metricsSrv.ListenAndServe(); err != nil {
+					return fmt.Errorf("serving metrics: %v", err)
+				}
+				return nil
+			}, func(error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := metricsSrv.Shutdown(ctx); err != nil {
+					log.Printf("shutting down metrics server: %v", err)
+				}
+				log.Print("returning metrics shutdown")
+			})
+		}
+
+		g.Add(run.SignalHandler(ctx, os.Interrupt))
+
+		if err := g.Run(); err != nil {
+			var se run.SignalError
+			if errors.As(err, &se) {
+				log.Printf("Received signal %s, terminating", se.Signal.String())
+				os.Exit(0)
+			}
+			l.Fatalf("group error: %v", err)
 		}
 	case "4sqsync":
 		cmd := fsqSyncCommand{

@@ -319,6 +319,10 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 		return nil, fmt.Errorf("opening DB: %v", err)
 	}
 
+	if err := db.Ping(); err != nil {
+		return nil, fmt.Errorf("ping database: %v", err)
+	}
+
 	s := &Storage{
 		db:  db,
 		log: logger,
@@ -336,6 +340,9 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 }
 
 func (s *Storage) migrate(ctx context.Context) error {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
 	if _, err := s.db.ExecContext(
 		ctx,
 		`create table if not exists migrations (
