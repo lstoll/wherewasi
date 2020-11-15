@@ -61,7 +61,9 @@ func main() {
 			log: l,
 		}
 
-		ws := &web{}
+		ws := &web{
+			log: l,
+		}
 
 		ah := &oidcm.Handler{}
 
@@ -125,6 +127,7 @@ func main() {
 		base.Parse(ctx, l)
 
 		ws.smgr = base.smgr
+		ws.store = base.storage
 
 		var errs []string
 

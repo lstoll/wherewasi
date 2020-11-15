@@ -10,6 +10,7 @@ require (
 	github.com/mattn/go-sqlite3 v2.0.3+incompatible
 	github.com/oklog/run v1.1.0
 	github.com/pardot/oidc v0.0.0-20200518180338-f8645300dfbf
+	github.com/paulmach/go.geojson v1.4.0
 	github.com/prometheus/client_golang v1.7.1
 	golang.org/x/crypto v0.0.0-20190923035154-9ee001bba392
 	golang.org/x/oauth2 v0.0.0-20190604053449-0f29369cfe45

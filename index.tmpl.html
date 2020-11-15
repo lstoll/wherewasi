@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Wherewasi</title>
+
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="shortcut icon" type="image/x-icon" href="docs/images/favicon.ico" />
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
+        integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
+        crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.6.0/dist/leaflet.js"
+        integrity="sha512-gZwIG9x3wUXg2hdXF6+rVkLF/0Vi9U8D2Ntg4Ga5I5BZpVkVxlJWbSQtXPSiUTtC0TjtGOmxa1AJPuV0CPthew=="
+        crossorigin=""></script>
+
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-1.12.4.js"
+        integrity="sha384-KcyRSlC9FQog/lJsT+QA8AUIFBgnwKM7bxm7/YaX+NTr4D00npYawrX0h+oXI3a2"
+        crossorigin="anonymous"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.js"
+        integrity="sha384-JPbtLYL10d/Z1crlc6GGGGM3PavCzzoUJ1UxH0bXHOfguWHQ6XAWrIzW+MBGGXe5"
+        crossorigin="anonymous"></script>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            var map = L.map('map-canvas');
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(map);
+
+            var features = L.geoJSON(geoJSON, {
+                onEachFeature: function (feature, layer) {
+                    if (feature.properties && feature.properties.popupContent) {
+                        layer.bindPopup(feature.properties.popupContent);
+                    }
+                }
+            });
+            features.addTo(map);
+
+            map.fitBounds(features.getBounds());
+        });
+
+        $(function () {
+            $(".datepicker").datepicker({
+                dateFormat: 'yy-mm-dd',
+            });
+        });
+    </script>
+    <style>
+        html,
+        body {
+            margin: 0px;
+            height: 100%;
+        }
+
+        body {
+            display: flex;
+            flex-flow: column wrap;
+        }
+
+        #query {
+            flex: 0;
+            margin-left: 0.5rem;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        #map-container {
+            flex: 1 1;
+            display: flex;
+        }
+
+        #map-canvas {
+            flex: 1;
+        }
+
+        /* pop over leaflet */
+        .ui-datepicker {
+            z-index: 1001 !important;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="query" class="row">
+        <form method="GET">
+            <label for="from">From:</label>
+            <input type="text" class="datepicker" id="from" name="from" value="{{.From}}">
+            <label for="to">To:</label>
+            <input type="text" class="datepicker" id="to" name="to" value="{{.To}}">
+            <label for="acc">Accuracy:</label>
+            <select name="acc" id="acc">
+                <option value="50" {{ if lt .Accuracy 75 }} selected="selected" {{ end }}>50</option>
+                <option value="100" {{ if and (gt .Accuracy 75) (lt .Accuracy 175) }} selected="selected" {{ end }}>100
+                </option>
+                <option value="250" {{ if and (gt .Accuracy 175) (lt .Accuracy 2375) }} selected="selected" {{ end }}>
+                    250</option>
+                <option value="5000" {{ if and (gt .Accuracy 2375) (lt .Accuracy 7500) }} selected="selected" {{ end }}>
+                    5000</option>
+                <option value="5000" {{ if gt .Accuracy 7500 }} selected="selected" {{ end }}>20000</option>
+            </select>
+            <input type="submit">
+        </form>
+    </div>
+
+    <div id="map-container">
+        <div id="map-canvas"></div>
+    </div>
+</body>
+
+<script>
+    // hide this down here because it's just a big block of data
+    const geoJSON = JSON.parse({{ .GeoJSON }});
+</script>
+
+</html>

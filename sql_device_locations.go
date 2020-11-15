@@ -11,6 +11,14 @@ import (
 
 var _ owntracksStore = (*Storage)(nil)
 
+type DeviceLocation struct {
+	Lat       float64   `json:"lat"`
+	Lng       float64   `json:"lng"`
+	Accuracy  int       `json:"accuracy"`
+	Timestamp time.Time `json:"timestamp,omitempty"`
+	Velocity  *int      `json:"velocity,omitempty"`
+}
+
 func (s *Storage) AddOTLocation(ctx context.Context, msg owntracksMessage) error {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -88,6 +96,34 @@ func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutL
 	}
 
 	return nil
+}
+
+func (s *Storage) RecentLocations(ctx context.Context, from, to time.Time) ([]DeviceLocation, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`select lat, lng, accuracy, timestamp, velocity from device_locations where timestamp > ? and timestamp < ? order by timestamp asc`, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("getting locations: %v", err)
+	}
+	defer rows.Close()
+
+	ret := []DeviceLocation{}
+
+	for rows.Next() {
+		var loc DeviceLocation
+		if err := rows.Scan(
+			&loc.Lat,
+			&loc.Lng,
+			&loc.Accuracy,
+			&loc.Timestamp,
+			&loc.Velocity,
+		); err != nil {
+			return nil, fmt.Errorf("scanning row: %v", err)
+		}
+
+		ret = append(ret, loc)
+	}
+
+	return ret, nil
 }
 
 // LatestLocationTimestamp returns the time at which the latest location was
