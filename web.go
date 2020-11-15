@@ -35,7 +35,7 @@ type web struct {
 }
 
 type indexData struct {
-	GeoJSON string
+	GeoJSON template.JS
 
 	From string
 	To   string
@@ -120,7 +120,7 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	tmpData := indexData{
-		GeoJSON: string(geoJSON),
+		GeoJSON: template.JS(geoJSON),
 
 		From: from.Format("2006-01-02"),
 		To:   to.Format("2006-01-02"),
