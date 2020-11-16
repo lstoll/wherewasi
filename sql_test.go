@@ -16,7 +16,7 @@ import (
 func TestMigrations(t *testing.T) {
 	ctx, s := setupDB(t)
 
-	var seen []int
+	var seen []int64
 	for _, m := range migrations {
 		for _, s := range seen {
 			if m.Idx == s {
