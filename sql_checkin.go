@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -212,4 +213,51 @@ func (s *Storage) Last4sqCheckinTime(ctx context.Context) (time.Time, error) {
 	}
 
 	return time.Time{}, nil
+}
+
+type Checkin struct {
+	VenueName string
+	VenueLng  float64
+	VenueLat  float64
+	Timestamp time.Time
+	With      []string
+}
+
+func (s *Storage) GetCheckins(ctx context.Context, from, to time.Time) ([]Checkin, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`select c.checkin_time, v.name, v.lng, v.lat, group_concat(p.name, ';') from checkins c
+left outer join checkin_people cp on (c.id = cp.checkin_id)
+left outer join people p on (cp.person_id = p.id)
+join venues v on (c.venue_id = v.id)
+where c.checkin_time > ? and c.checkin_time < ?
+group by c.id
+order by c.checkin_time asc;
+`, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("getting locations: %v", err)
+	}
+	defer rows.Close()
+
+	ret := []Checkin{}
+
+	for rows.Next() {
+		var ci Checkin
+		var withConcat *string
+		if err := rows.Scan(
+			&ci.Timestamp,
+			&ci.VenueName,
+			&ci.VenueLng,
+			&ci.VenueLat,
+			&withConcat,
+		); err != nil {
+			return nil, fmt.Errorf("scanning row: %v", err)
+		}
+		if withConcat != nil {
+			ci.With = strings.Split(*withConcat, ";")
+		}
+
+		ret = append(ret, ci)
+	}
+
+	return ret, nil
 }
