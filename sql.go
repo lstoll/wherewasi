@@ -18,7 +18,7 @@ import (
 
 type migration struct {
 	// Idx is a unique identifier for this migration. Datestamp is a good idea
-	Idx int
+	Idx int64
 	// SQL to execute as part of this migration
 	SQL string
 	// AfterFunc is run inside the migration transaction, if not nil. Runs
@@ -355,7 +355,7 @@ func (s *Storage) migrate(ctx context.Context) error {
 
 	if err := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		for _, mig := range migrations {
-			var idx int
+			var idx int64
 			err := tx.QueryRowContext(ctx, `select idx from migrations where idx = $1;`, mig.Idx).Scan(&idx)
 			if err == nil {
 				// selected fine so we've already inserted migration, next
