@@ -301,6 +301,13 @@ var migrations = []migration{
 		);
 		`,
 	},
+	{
+		Idx: 202011221401,
+		SQL: `
+			create index device_locations_timestamp_idx on device_locations(timestamp);
+			create index checkins_checkin_time_idx on checkins(checkin_time);
+		`,
+	},
 }
 
 type Storage struct {
