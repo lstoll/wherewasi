@@ -10,8 +10,8 @@ import (
 )
 
 func (s *Storage) UpsertTripitTrip(ctx context.Context, trip *tripit.Trip, raw []byte) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.tripsMu.Lock()
+	defer s.tripsMu.Unlock()
 
 	if trip.Id == "" {
 		return fmt.Errorf("trip has no id")
@@ -45,6 +45,9 @@ where tripit_id=?`,
 }
 
 func (s *Storage) LatestTripitID(ctx context.Context) (string, error) {
+	s.tripsMu.RLock()
+	defer s.tripsMu.RUnlock()
+
 	var (
 		tripitID string
 	)

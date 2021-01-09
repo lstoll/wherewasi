@@ -313,9 +313,11 @@ var migrations = []migration{
 type Storage struct {
 	db *sql.DB
 
-	// go-sqlite supports concurrent reads, but not writes. Queries that write
-	// should use this mutex to synchronize that access
-	writeMu sync.Mutex
+	// sqlite supports either one writer, or multiple readers. wrap tables in
+	// our own synchronization to handle this.
+	deviceLocationsMu sync.RWMutex
+	checkinsMu        sync.RWMutex
+	tripsMu           sync.RWMutex
 
 	log logger
 }
@@ -347,9 +349,6 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 }
 
 func (s *Storage) migrate(ctx context.Context) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	if _, err := s.db.ExecContext(
 		ctx,
 		`create table if not exists migrations (
