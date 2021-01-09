@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ancientlore/go-tripit"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -64,8 +65,9 @@ func TestSQLiteConcurreny(t *testing.T) {
 		Data: otLocb,
 	}
 
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
+	for i := 0; i < 10; i++ {
+		wg.Add(3)
+
 		go func() {
 			defer wg.Done()
 
@@ -74,6 +76,39 @@ func TestSQLiteConcurreny(t *testing.T) {
 					errs = append(errs, err)
 				}
 				if _, err := s.RecentLocations(ctx, time.Now().Add(-1*time.Minute), time.Now().Add(1*time.Minute)); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}()
+		go func() {
+			defer wg.Done()
+
+			for i := 0; i < 10; i++ {
+				if err := s.UpsertTripitTrip(ctx, &tripit.Trip{
+					Id:        randString(10),
+					StartDate: "2006-01-02",
+					EndDate:   "2006-01-02",
+				}, []byte(`{}`)); err != nil {
+					errs = append(errs, err)
+				}
+				if _, err := s.LatestTripitID(ctx); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}()
+		go func() {
+			defer wg.Done()
+
+			for i := 0; i < 10; i++ {
+				if _, err := s.Upsert4sqCheckin(ctx, fsqCheckin{
+					ID:        randString(10),
+					CreatedAt: int(time.Now().Unix()),
+					Score:     s,
+					raw:       []byte(`{}`),
+				}); err != nil {
+					errs = append(errs, err)
+				}
+				if _, err := s.Last4sqCheckinTime(ctx); err != nil {
 					errs = append(errs, err)
 				}
 			}
@@ -111,4 +146,14 @@ func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	}
 
 	return ctx, s
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+
+func randString(n int) string {
+	b := make([]rune, n)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	return string(b)
 }
