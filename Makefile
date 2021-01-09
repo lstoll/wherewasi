@@ -2,7 +2,7 @@ GOPATH=$(shell go env GOPATH)
 
 .PHONY: all $(GOPATH)/bin/wherewasi test lint proto
 
-go_build_flags=-tags="libsqlite3 sqlite3_unlock_notify"
+go_build_flags=
 
 all: $(GOPATH)/bin/wherewasi test lint
 
