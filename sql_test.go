@@ -131,8 +131,7 @@ func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	ctx = context.Background()
 
 	tr := rand.New(rand.NewSource(time.Now().UnixNano())).Int63()
-
-	connStr := fmt.Sprintf("file:%s/test-%d.db?cache=shared&_foreign_keys=on", t.TempDir(), tr)
+	connStr := connStr(fmt.Sprintf("%s/test-%d.db?", t.TempDir(), tr))
 
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {

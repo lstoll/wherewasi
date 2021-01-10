@@ -16,9 +16,6 @@ import (
 // }
 
 func (s *Storage) Upsert4sqCheckin(ctx context.Context, checkin fsqCheckin) (string, error) {
-	s.checkinsMu.Lock()
-	defer s.checkinsMu.Unlock()
-
 	if checkin.ID == "" {
 		return "", fmt.Errorf("checkin has no foursquare ID")
 	}
@@ -47,9 +44,6 @@ where fsq_id=$9`,
 // up-to-date user entries for them. Also denormalizes the checkin with
 // information in to the database record.
 func (s *Storage) Sync4sqUsers(ctx context.Context) error {
-	s.checkinsMu.Lock()
-	defer s.checkinsMu.Unlock()
-
 	txErr := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		// run against all checkins
 		rows, err := tx.QueryContext(ctx,
@@ -124,9 +118,6 @@ func (s *Storage) Sync4sqUsers(ctx context.Context) error {
 // Sync4sqVenues finds all foursquare checkins in the DB, and ensures there are
 // up-to-date venue entries for them.
 func (s *Storage) Sync4sqVenues(ctx context.Context) error {
-	s.checkinsMu.Lock()
-	defer s.checkinsMu.Unlock()
-
 	txErr := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		// run against all checkins
 		rows, err := tx.QueryContext(ctx,
@@ -198,9 +189,6 @@ func (s *Storage) Sync4sqVenues(ctx context.Context) error {
 }
 
 func (s *Storage) Last4sqCheckinTime(ctx context.Context) (time.Time, error) {
-	s.checkinsMu.RLock()
-	defer s.checkinsMu.RUnlock()
-
 	var latestCheckin *time.Time
 
 	err := s.db.QueryRowContext(ctx, `select checkin_time from checkins order by datetime(checkin_time) desc limit 1`).Scan(&latestCheckin)
@@ -227,9 +215,6 @@ type Checkin struct {
 }
 
 func (s *Storage) GetCheckins(ctx context.Context, from, to time.Time) ([]Checkin, error) {
-	s.checkinsMu.RLock()
-	defer s.checkinsMu.RUnlock()
-
 	rows, err := s.db.QueryContext(ctx,
 		`select c.checkin_time, v.name, v.lng, v.lat, group_concat(p.name, ';') from checkins c
 left outer join checkin_people cp on (c.id = cp.checkin_id)

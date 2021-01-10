@@ -516,7 +516,7 @@ func (b *baseCommand) Parse(ctx context.Context, logger logger) {
 		os.Exit(1)
 	}
 
-	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?cache=shared&_foreign_keys=on", filepath.Join(b.dbPath, mainDBFile)))
+	st, err := newStorage(ctx, logger, connStr(filepath.Join(b.dbPath, mainDBFile)))
 	if err != nil {
 		logger.Fatalf("creating storage: %v", err)
 	}
@@ -602,4 +602,8 @@ func (s *secretsManager) Save() error {
 		return fmt.Errorf("writing secrets to %s: %v", s.path, err)
 	}
 	return nil
+}
+
+func connStr(path string) string {
+	return fmt.Sprintf("file:%s?_busy_timeout=5000&_foreign_keys=on", path)
 }

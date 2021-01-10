@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -312,12 +311,6 @@ var migrations = []migration{
 
 type Storage struct {
 	db *sql.DB
-
-	// sqlite supports either one writer, or multiple readers. wrap tables in
-	// our own synchronization to handle this.
-	deviceLocationsMu sync.RWMutex
-	checkinsMu        sync.RWMutex
-	tripsMu           sync.RWMutex
 
 	log logger
 }

@@ -20,9 +20,6 @@ type DeviceLocation struct {
 }
 
 func (s *Storage) AddOTLocation(ctx context.Context, msg owntracksMessage) error {
-	s.deviceLocationsMu.Lock()
-	defer s.deviceLocationsMu.Unlock()
-
 	if !msg.IsLocation() {
 		return fmt.Errorf("message needs to be location")
 	}
@@ -53,9 +50,6 @@ func (s *Storage) AddOTLocation(ctx context.Context, msg owntracksMessage) error
 }
 
 func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutLocation) error {
-	s.deviceLocationsMu.Lock()
-	defer s.deviceLocationsMu.Unlock()
-
 	err := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		for _, loc := range locs {
 			if loc.Raw == nil || len(loc.Raw) < 1 {
@@ -99,9 +93,6 @@ func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutL
 }
 
 func (s *Storage) RecentLocations(ctx context.Context, from, to time.Time) ([]DeviceLocation, error) {
-	s.deviceLocationsMu.RLock()
-	defer s.deviceLocationsMu.RUnlock()
-
 	rows, err := s.db.QueryContext(ctx,
 		`select lat, lng, accuracy, timestamp, velocity from device_locations where timestamp > ? and timestamp < ? order by timestamp asc`, from, to)
 	if err != nil {
@@ -132,9 +123,6 @@ func (s *Storage) RecentLocations(ctx context.Context, from, to time.Time) ([]De
 // LatestLocationTimestamp returns the time at which the latest location was
 // recorded
 func (s *Storage) LatestLocationTimestamp(ctx context.Context) (time.Time, error) {
-	s.deviceLocationsMu.RLock()
-	defer s.deviceLocationsMu.RUnlock()
-
 	var timestamp time.Time
 
 	if err := s.db.QueryRowContext(ctx, `select timestamp from device_locations order by timestamp desc limit 1`).Scan(&timestamp); err != nil {
