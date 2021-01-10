@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ancientlore/go-tripit"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -65,57 +64,36 @@ func TestSQLiteConcurreny(t *testing.T) {
 		Data: otLocb,
 	}
 
+	errC := make(chan error, 1)
+	errDone := make(chan struct{})
+
+	go func() {
+		for err := range errC {
+			errs = append(errs, err)
+		}
+		errDone <- struct{}{}
+	}()
+
 	for i := 0; i < 10; i++ {
-		wg.Add(3)
+		wg.Add(1)
 
 		go func() {
 			defer wg.Done()
 
 			for i := 0; i < 10; i++ {
 				if err := s.AddOTLocation(ctx, otMsg); err != nil {
-					errs = append(errs, err)
+					errC <- err
 				}
 				if _, err := s.RecentLocations(ctx, time.Now().Add(-1*time.Minute), time.Now().Add(1*time.Minute)); err != nil {
-					errs = append(errs, err)
-				}
-			}
-		}()
-		go func() {
-			defer wg.Done()
-
-			for i := 0; i < 10; i++ {
-				if err := s.UpsertTripitTrip(ctx, &tripit.Trip{
-					Id:        randString(10),
-					StartDate: "2006-01-02",
-					EndDate:   "2006-01-02",
-				}, []byte(`{}`)); err != nil {
-					errs = append(errs, err)
-				}
-				if _, err := s.LatestTripitID(ctx); err != nil {
-					errs = append(errs, err)
-				}
-			}
-		}()
-		go func() {
-			defer wg.Done()
-
-			for i := 0; i < 10; i++ {
-				if _, err := s.Upsert4sqCheckin(ctx, fsqCheckin{
-					ID:        randString(10),
-					CreatedAt: int(time.Now().Unix()),
-					Score:     s,
-					raw:       []byte(`{}`),
-				}); err != nil {
-					errs = append(errs, err)
-				}
-				if _, err := s.Last4sqCheckinTime(ctx); err != nil {
-					errs = append(errs, err)
+					errC <- err
 				}
 			}
 		}()
 	}
 
 	wg.Wait()
+	close(errC)
+	<-errDone
 
 	if len(errs) > 0 {
 		t.Fatalf("wanted 0 errors, found: %d\n\n%v", len(errs), errs)
@@ -131,7 +109,7 @@ func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	ctx = context.Background()
 
 	tr := rand.New(rand.NewSource(time.Now().UnixNano())).Int63()
-	connStr := connStr(fmt.Sprintf("%s/test-%d.db?", t.TempDir(), tr))
+	connStr := connStr(fmt.Sprintf("%s/test-%d.db", t.TempDir(), tr))
 
 	db, err := sql.Open("spatialite", connStr)
 	if err != nil {
@@ -145,14 +123,4 @@ func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	}
 
 	return ctx, s
-}
-
-var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randString(n int) string {
-	b := make([]rune, n)
-	for i := range b {
-		b[i] = letterRunes[rand.Intn(len(letterRunes))]
-	}
-	return string(b)
 }
