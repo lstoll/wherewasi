@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -313,10 +312,6 @@ var migrations = []migration{
 type Storage struct {
 	db *sql.DB
 
-	// go-sqlite supports concurrent reads, but not writes. Queries that write
-	// should use this mutex to synchronize that access
-	writeMu sync.Mutex
-
 	log logger
 }
 
@@ -347,9 +342,6 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 }
 
 func (s *Storage) migrate(ctx context.Context) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	if _, err := s.db.ExecContext(
 		ctx,
 		`create table if not exists migrations (

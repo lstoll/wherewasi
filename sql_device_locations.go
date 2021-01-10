@@ -20,9 +20,6 @@ type DeviceLocation struct {
 }
 
 func (s *Storage) AddOTLocation(ctx context.Context, msg owntracksMessage) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	if !msg.IsLocation() {
 		return fmt.Errorf("message needs to be location")
 	}
@@ -53,9 +50,6 @@ func (s *Storage) AddOTLocation(ctx context.Context, msg owntracksMessage) error
 }
 
 func (s *Storage) AddGoogleTakeoutLocations(ctx context.Context, locs []takeoutLocation) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	err := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		for _, loc := range locs {
 			if loc.Raw == nil || len(loc.Raw) < 1 {

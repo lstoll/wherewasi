@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -42,14 +44,74 @@ func TestMigrations(t *testing.T) {
 	}
 }
 
+func TestSQLiteConcurreny(t *testing.T) {
+	ctx, s := setupDB(t)
+
+	var wg sync.WaitGroup
+
+	var errs []error
+
+	otLoc := otLocation{
+		Accuracy:      iptr(5), // TODO - should this allow nulls in the DB? OT has it as optional
+		TimestampUnix: int(time.Now().Unix()),
+	}
+	otLocb, err := json.Marshal(&otLoc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otMsg := owntracksMessage{
+		Type: "location",
+		Data: otLocb,
+	}
+
+	errC := make(chan error, 1)
+	errDone := make(chan struct{})
+
+	go func() {
+		for err := range errC {
+			errs = append(errs, err)
+		}
+		errDone <- struct{}{}
+	}()
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+
+			for i := 0; i < 10; i++ {
+				if err := s.AddOTLocation(ctx, otMsg); err != nil {
+					errC <- err
+				}
+				if _, err := s.RecentLocations(ctx, time.Now().Add(-1*time.Minute), time.Now().Add(1*time.Minute)); err != nil {
+					errC <- err
+				}
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errC)
+	<-errDone
+
+	if len(errs) > 0 {
+		t.Fatalf("wanted 0 errors, found: %d\n\n%v", len(errs), errs)
+	}
+
+}
+
+func iptr(i int) *int {
+	return &i
+}
+
 func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	ctx = context.Background()
 
 	tr := rand.New(rand.NewSource(time.Now().UnixNano())).Int63()
+	connStr := connStr(fmt.Sprintf("%s/test-%d.db", t.TempDir(), tr))
 
-	connStr := fmt.Sprintf("file:%s/test-%d.db?cache=shared&mode=memory&_foreign_keys=on", t.TempDir(), tr)
-
-	db, err := sql.Open("sqlite3", connStr)
+	db, err := sql.Open("spatialite", connStr)
 	if err != nil {
 		t.Fatal(err)
 	}
