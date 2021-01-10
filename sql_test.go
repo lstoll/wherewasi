@@ -133,7 +133,7 @@ func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 	tr := rand.New(rand.NewSource(time.Now().UnixNano())).Int63()
 	connStr := connStr(fmt.Sprintf("%s/test-%d.db?", t.TempDir(), tr))
 
-	db, err := sql.Open("sqlite3", connStr)
+	db, err := sql.Open("spatialite", connStr)
 	if err != nil {
 		t.Fatal(err)
 	}
