@@ -1,6 +1,6 @@
 GOPATH=$(shell go env GOPATH)
 
-.PHONY: all $(GOPATH)/bin/wherewasi test lint proto
+.PHONY: all $(GOPATH)/bin/wherewasi test lint proto docker-dev
 
 go_build_flags=-tags="libsqlite3 sqlite3_unlock_notify"
 
@@ -17,3 +17,9 @@ lint: bin/golangci-lint-1.23.8
 
 bin/golangci-lint-1.23.8:
 	./hack/fetch-golangci-lint.sh
+
+docker-dev:
+	docker buildx build \
+		--push \
+		--platform linux/arm64/v8,linux/amd64 \
+		--tag lstoll/wherewasi:dev .

@@ -35,6 +35,16 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	if r.ContentLength == 0 {
+		// in some cases (deleting friends) a 0 length message can be
+		// intentionally sent. (ref:
+		// https://github.com/owntracks/ios/issues/580#issuecomment-495276821).
+		// If we get one of these simply do nothing, as there is nothing to
+		// deserialize and no known action we can take
+		o.log.Printf("skipping publish empty body")
+		return
+	}
+
 	// parse message
 	msg := owntracksMessage{}
 	rawMsg, err := ioutil.ReadAll(r.Body)
@@ -46,7 +56,7 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := json.Unmarshal(rawMsg, &msg); err != nil {
 		metricOTSubmitErrorCount.Inc()
-		o.log.Printf("decoding owntracks message: %v", err)
+		o.log.Printf("decoding owntracks message (%s): %v", string(rawMsg), err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
