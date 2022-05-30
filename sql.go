@@ -321,7 +321,7 @@ type Storage struct {
 }
 
 func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, error) {
-	db, err := sql.Open("spatialite", connStr)
+	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("opening DB: %v", err)
 	}
