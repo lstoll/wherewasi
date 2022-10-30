@@ -445,3 +445,11 @@ func integrityCheck(ctx context.Context, conn *sql.DB) error {
 
 	return fmt.Errorf("integrity problems: %s", strings.Join(res, ", "))
 }
+
+func buildConnStr(path string, disableWal bool) string {
+	cs := fmt.Sprintf("file:%s?_busy_timeout=10000&mode=rwc&_foreign_keys=on", path)
+	if !disableWal {
+		cs = cs + "&_journal_mode=WAL"
+	}
+	return cs
+}

@@ -511,10 +511,7 @@ func (b *baseCommand) Parse(ctx context.Context, logger logger) {
 		os.Exit(1)
 	}
 
-	connStr := fmt.Sprintf("file:%s?_busy_timeout=10000&mode=rwc&_journal_mode=WAL&_foreign_keys=on", filepath.Join(b.dbPath, mainDBFile))
-	if b.disableWal {
-		connStr = fmt.Sprintf("file:%s?_foreign_keys=on", filepath.Join(b.dbPath, mainDBFile))
-	}
+	connStr := buildConnStr(filepath.Join(b.dbPath, mainDBFile), b.disableWal)
 
 	st, err := newStorage(ctx, logger, connStr)
 	if err != nil {
