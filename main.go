@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -552,7 +551,7 @@ type secretsManager struct {
 }
 
 func (s *secretsManager) Load() error {
-	b, err := ioutil.ReadFile(s.path)
+	b, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// no data yet, just return an empty set
@@ -571,7 +570,7 @@ func (s *secretsManager) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshaling secrets: %s", err)
 	}
-	if err := ioutil.WriteFile(s.path, b, 0600); err != nil {
+	if err := os.WriteFile(s.path, b, 0600); err != nil {
 		return fmt.Errorf("writing secrets to %s: %v", s.path, err)
 	}
 	return nil
