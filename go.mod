@@ -1,12 +1,12 @@
 module github.com/lstoll/wherewasi
 
-go 1.18
+go 1.19
 
 require (
 	github.com/ancientlore/go-tripit v0.2.1
 	github.com/cenkalti/backoff/v4 v4.0.2
 	github.com/google/uuid v1.1.1
-	github.com/mattn/go-sqlite3 v2.0.3+incompatible
+	github.com/mattn/go-sqlite3 v1.14.16
 	github.com/oklog/run v1.1.0
 	github.com/pardot/oidc v0.0.0-20200518180338-f8645300dfbf
 	github.com/paulmach/go.geojson v1.4.0
