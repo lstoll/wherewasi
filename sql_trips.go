@@ -10,9 +10,6 @@ import (
 )
 
 func (s *Storage) UpsertTripitTrip(ctx context.Context, trip *tripit.Trip, raw []byte) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	if trip.Id == "" {
 		return fmt.Errorf("trip has no id")
 	}

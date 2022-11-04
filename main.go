@@ -4,23 +4,19 @@ import (
 	"context"
 	"crypto/sha256"
 	"crypto/subtle"
-	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
-	"github.com/mattn/go-sqlite3"
 	"github.com/oklog/run"
 	oidcm "github.com/pardot/oidc/middleware"
 	"github.com/prometheus/client_golang/prometheus"
@@ -28,10 +24,6 @@ import (
 	"golang.org/x/crypto/hkdf"
 	"golang.org/x/oauth2"
 )
-
-func init() {
-	registerSpatiaLite()
-}
 
 const (
 	mainDBFile  = "wherewasi.db"
@@ -492,13 +484,15 @@ type baseCommand struct {
 	storage *Storage
 	smgr    *secretsManager
 
-	dbPath string
+	dbPath     string
+	disableWal bool
 
 	fs *flag.FlagSet
 }
 
 func (b *baseCommand) AddFlags(fs *flag.FlagSet) {
 	fs.StringVar(&b.dbPath, "db-path", "db", "directory for data storage")
+	fs.BoolVar(&b.disableWal, "disable-wal", false, "disable WAL mode for sqlite")
 	b.fs = fs
 }
 
@@ -516,7 +510,9 @@ func (b *baseCommand) Parse(ctx context.Context, logger logger) {
 		os.Exit(1)
 	}
 
-	st, err := newStorage(ctx, logger, fmt.Sprintf("file:%s?cache=shared&_foreign_keys=on", filepath.Join(b.dbPath, mainDBFile)))
+	connStr := buildConnStr(filepath.Join(b.dbPath, mainDBFile), b.disableWal)
+
+	st, err := newStorage(ctx, logger, connStr)
 	if err != nil {
 		logger.Fatalf("creating storage: %v", err)
 	}
@@ -528,30 +524,6 @@ func (b *baseCommand) Parse(ctx context.Context, logger logger) {
 	if err := b.smgr.Load(); err != nil {
 		logger.Fatalf("creating secrets manager: %v", err)
 	}
-}
-
-func registerSpatiaLite() {
-	exts := map[string]string{}
-
-	if runtime.GOOS == "linux" {
-		exts["libspatialite.so.7"] = "spatialite_init_ex"
-	} else if runtime.GOOS == "darwin" {
-		exts["mod_spatialite"] = "sqlite3_modspatialite_init"
-	}
-
-	sql.Register("spatialite", &sqlite3.SQLiteDriver{
-		ConnectHook: func(conn *sqlite3.SQLiteConn) error {
-			if len(exts) > 0 {
-				for l, e := range exts {
-					if err := conn.LoadExtension(l, e); err == nil {
-						return nil
-					}
-				}
-				return fmt.Errorf("loading spatialite failed. make sure libraries are installed")
-			}
-			return nil
-		},
-	})
 }
 
 func wrapBasicAuth(username, password string, wrap http.Handler) http.Handler {
@@ -579,7 +551,7 @@ type secretsManager struct {
 }
 
 func (s *secretsManager) Load() error {
-	b, err := ioutil.ReadFile(s.path)
+	b, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// no data yet, just return an empty set
@@ -598,7 +570,7 @@ func (s *secretsManager) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshaling secrets: %s", err)
 	}
-	if err := ioutil.WriteFile(s.path, b, 0600); err != nil {
+	if err := os.WriteFile(s.path, b, 0600); err != nil {
 		return fmt.Errorf("writing secrets to %s: %v", s.path, err)
 	}
 	return nil

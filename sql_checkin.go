@@ -16,9 +16,6 @@ import (
 // }
 
 func (s *Storage) Upsert4sqCheckin(ctx context.Context, checkin fsqCheckin) (string, error) {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	if checkin.ID == "" {
 		return "", fmt.Errorf("checkin has no foursquare ID")
 	}
@@ -47,9 +44,6 @@ where fsq_id=$9`,
 // up-to-date user entries for them. Also denormalizes the checkin with
 // information in to the database record.
 func (s *Storage) Sync4sqUsers(ctx context.Context) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	txErr := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
 		// run against all checkins
 		rows, err := tx.QueryContext(ctx,
@@ -124,77 +118,69 @@ func (s *Storage) Sync4sqUsers(ctx context.Context) error {
 // Sync4sqVenues finds all foursquare checkins in the DB, and ensures there are
 // up-to-date venue entries for them.
 func (s *Storage) Sync4sqVenues(ctx context.Context) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
-	txErr := s.execTx(ctx, func(ctx context.Context, tx *sql.Tx) error {
-		// run against all checkins
-		rows, err := tx.QueryContext(ctx,
-			`select id, fsq_raw from checkins where fsq_id is not null`)
-		if err != nil {
-			return fmt.Errorf("getting checkins: %v", err)
+	// run against all checkins
+	rows, err := s.db.QueryContext(ctx,
+		`select id, fsq_raw from checkins where fsq_id is not null`)
+	if err != nil {
+		return fmt.Errorf("getting checkins: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			checkinID string
+			cijson    string
+		)
+		if err := rows.Scan(&checkinID, &cijson); err != nil {
+			return fmt.Errorf("scanning row: %v", err)
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var (
-				checkinID string
-				cijson    string
-			)
-			if err := rows.Scan(&checkinID, &cijson); err != nil {
-				return fmt.Errorf("scanning row: %v", err)
-			}
-			fsq := fsqCheckin{}
-			if err := json.Unmarshal([]byte(cijson), &fsq); err != nil {
-				return fmt.Errorf("unmarshaling checkin: %v", err)
-			}
+		fsq := fsqCheckin{}
+		if err := json.Unmarshal([]byte(cijson), &fsq); err != nil {
+			return fmt.Errorf("unmarshaling checkin: %v", err)
+		}
 
-			fv := fsq.Venue
-			var cgry fsqCategories
-			for _, c := range fv.Categories {
-				if c.Primary {
-					cgry = c
-				}
+		fv := fsq.Venue
+		var cgry fsqCategories
+		for _, c := range fv.Categories {
+			if c.Primary {
+				cgry = c
 			}
+		}
 
-			// get existing or new ID
-			var venueID string
+		// get existing or new ID
+		var venueID string
 
-			if err := tx.QueryRowContext(ctx, `select id from venues where fsq_id=$1`, fv.ID).Scan(&venueID); err != nil {
-				if err != sql.ErrNoRows {
-					return fmt.Errorf("checking for existing venue ID: %v", err)
-				}
-				// no record, create a new ID
-				venueID = newDBID()
+		if err := s.db.QueryRowContext(ctx, `select id from venues where fsq_id=$1`, fv.ID).Scan(&venueID); err != nil {
+			if err != sql.ErrNoRows {
+				return fmt.Errorf("checking for existing venue ID: %v", err)
 			}
+			// no record, create a new ID
+			venueID = newDBID()
+		}
 
-			_, err := tx.ExecContext(ctx, `
+		_, err := s.db.ExecContext(ctx, `
 				insert into venues(id, fsq_id, name, lat, lng, category, street_address, city, state, postal_code, country, country_code) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 				on conflict(fsq_id) do update set name = ?, lat = ?, lng = ?, category = ?, street_address = ?, city = ?, state = ?, postal_code = ?, country = ?, country_code = ?
 				where fsq_id=?`,
-				venueID, fv.ID, fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.Address, fv.Location.City, fv.Location.State, fv.Location.PostalCode, fv.Location.Country, fv.Location.Cc,
-				fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.Address, fv.Location.City, fv.Location.State, fv.Location.PostalCode, fv.Location.Country, fv.Location.Cc,
-				fv.ID,
-			)
-			if err != nil {
-				return fmt.Errorf("upserting venue %s: %v", fv.Name, err)
-			}
+			venueID, fv.ID, fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.Address, fv.Location.City, fv.Location.State, fv.Location.PostalCode, fv.Location.Country, fv.Location.Cc,
+			fv.Name, fv.Location.Lat, fv.Location.Lng, cgry.Name, fv.Location.Address, fv.Location.City, fv.Location.State, fv.Location.PostalCode, fv.Location.Country, fv.Location.Cc,
+			fv.ID,
+		)
+		if err != nil {
+			return fmt.Errorf("upserting venue %s: %v", fv.Name, err)
+		}
 
-			_, err = tx.ExecContext(ctx, `
+		_, err = s.db.ExecContext(ctx, `
 				update checkins set venue_id=? where id=?`,
-				venueID, checkinID,
-			)
-			if err != nil {
-				return fmt.Errorf("updating checkin venue ID %s: %v", fv.Name, err)
-			}
-
+			venueID, checkinID,
+		)
+		if err != nil {
+			return fmt.Errorf("updating checkin venue ID %s: %v", fv.Name, err)
 		}
-		if err := rows.Err(); err != nil {
-			return fmt.Errorf("rows err: %v", err)
-		}
-		return nil
-
-	})
-	return txErr
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("rows err: %v", err)
+	}
+	return nil
 }
 
 func (s *Storage) Last4sqCheckinTime(ctx context.Context) (time.Time, error) {

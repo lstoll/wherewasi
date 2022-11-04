@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -47,7 +47,7 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 
 	// parse message
 	msg := owntracksMessage{}
-	rawMsg, err := ioutil.ReadAll(r.Body)
+	rawMsg, err := io.ReadAll(r.Body)
 	if err != nil {
 		metricOTSubmitErrorCount.Inc()
 		o.log.Printf("read owntracks message: %v", err)
@@ -132,7 +132,7 @@ func (o *owntracksServer) proxyLocation(req *http.Request, msg []byte) error {
 		return nil
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return fmt.Errorf("upstream status %d, body %v", resp.StatusCode, err)
 	}

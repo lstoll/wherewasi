@@ -7,6 +7,7 @@ import (
 	"log"
 	"math/rand"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -47,7 +48,7 @@ func setupDB(t *testing.T) (ctx context.Context, s *Storage) {
 
 	tr := rand.New(rand.NewSource(time.Now().UnixNano())).Int63()
 
-	connStr := fmt.Sprintf("file:%s/test-%d.db?cache=shared&mode=memory&_foreign_keys=on", t.TempDir(), tr)
+	connStr := buildConnStr(filepath.Join(t.TempDir(), fmt.Sprintf("test-%d.db", tr)), false)
 
 	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {

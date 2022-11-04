@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -313,15 +312,11 @@ var migrations = []migration{
 type Storage struct {
 	db *sql.DB
 
-	// go-sqlite supports concurrent reads, but not writes. Queries that write
-	// should use this mutex to synchronize that access
-	writeMu sync.Mutex
-
 	log logger
 }
 
 func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, error) {
-	db, err := sql.Open("spatialite", connStr)
+	db, err := sql.Open("sqlite3", connStr)
 	if err != nil {
 		return nil, fmt.Errorf("opening DB: %v", err)
 	}
@@ -347,9 +342,6 @@ func newStorage(ctx context.Context, logger logger, connStr string) (*Storage, e
 }
 
 func (s *Storage) migrate(ctx context.Context) error {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
 	if _, err := s.db.ExecContext(
 		ctx,
 		`create table if not exists migrations (
@@ -452,4 +444,12 @@ func integrityCheck(ctx context.Context, conn *sql.DB) error {
 	}
 
 	return fmt.Errorf("integrity problems: %s", strings.Join(res, ", "))
+}
+
+func buildConnStr(path string, disableWal bool) string {
+	cs := fmt.Sprintf("file:%s?_busy_timeout=10000&mode=rwc&_foreign_keys=on", path)
+	if !disableWal {
+		cs = cs + "&_journal_mode=WAL"
+	}
+	return cs
 }
