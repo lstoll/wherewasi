@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -125,7 +125,7 @@ func (f *fsqSyncCommand) fetchCheckins(ctx context.Context, since time.Time, bat
 				return err
 			}
 
-			b, err := ioutil.ReadAll(resp.Body)
+			b, err := io.ReadAll(resp.Body)
 			if err != nil {
 				return err
 			}

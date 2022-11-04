@@ -1,4 +1,4 @@
-FROM golang:1.15-buster AS build
+FROM golang:1.19-bullseye AS build
 
 WORKDIR /src
 
@@ -11,7 +11,7 @@ RUN go mod download
 COPY . .
 RUN go install ./...
 
-FROM debian:buster
+FROM debian:bullseye
 
 WORKDIR /app
 
