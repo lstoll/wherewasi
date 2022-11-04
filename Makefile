@@ -1,6 +1,6 @@
 GOPATH=$(shell go env GOPATH)
 
-.PHONY: all $(GOPATH)/bin/wherewasi test lint proto docker-dev
+.PHONY: all $(GOPATH)/bin/wherewasi test lint proto
 
 go_build_flags=
 
