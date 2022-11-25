@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -14,6 +15,12 @@ import (
 	"github.com/ancientlore/go-tripit"
 	geojson "github.com/paulmach/go.geojson"
 	"golang.org/x/oauth2"
+)
+
+var (
+	//go:embed index.tmpl.html
+	indexTmplHtml string
+	indexTmpl     = template.Must(template.New("index.tmpl.html").Parse(indexTmplHtml))
 )
 
 // the world wide web
@@ -180,12 +187,7 @@ func (w *web) index(rw http.ResponseWriter, r *http.Request) {
 		Line: drawLine,
 	}
 
-	t, err := template.ParseFiles("index.tmpl.html")
-	if err != nil {
-		http.Error(rw, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if err := t.Execute(rw, tmpData); err != nil {
+	if err := indexTmpl.Execute(rw, tmpData); err != nil {
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
