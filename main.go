@@ -84,16 +84,16 @@ func main() {
 		base.AddFlags(fs)
 		fs.StringVar(&listen, "listen", getEnvDefault("LISTEN", "localhost:8080"), "Address to listen on")
 		fs.StringVar(&promListen, "metrics-listen", getEnvDefault("METRICS_LISTEN", ""), "Address to serve metrics on (prom at /metrics), if set")
-		fs.StringVar(&secureKeyFlag, "secure-key", getEnvDefault("SECURE_KEY", ""), "Key used to encrypt/verify information like cookies")
+		fs.StringVar(&secureKeyFlag, "secure-key", "", "Key used to encrypt/verify information like cookies")
 		fs.StringVar(&baseURL, "base-url", getEnvDefault("BASE_URL", "http://localhost:8080"), "Base URL this service runs on")
 
 		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
-		fs.StringVar(&otPassword, "ot-password", getEnvDefault("OT_PUBLISH_PASSWORD", ""), "Password for the owntracks publish endpoint (required)")
+		fs.StringVar(&otPassword, "ot-password", "", "Password for the owntracks publish endpoint (required)")
 		fs.StringVar(&otRecorderURL, "ot-recorder-url", "", "Optional owntracks publish endpoint to proxy device locations to")
 
 		fs.StringVar(&ah.Issuer, "auth-issuer", getEnvDefault("AUTH_ISSUER", ""), "OIDC Issuer (required unless auth disabled)")
 		fs.StringVar(&ah.ClientID, "auth-client-id", getEnvDefault("AUTH_CLIENT_ID", ""), "OIDC Client ID (required unless auth disabled)")
-		fs.StringVar(&ah.ClientSecret, "auth-client-secret", getEnvDefault("AUTH_CLIENT_SECRET", ""), "OIDC Client Secret (required unless auth disabled)")
+		fs.StringVar(&ah.ClientSecret, "auth-client-secret", "", "OIDC Client Secret (required unless auth disabled)")
 		fs.StringVar(&ah.RedirectURL, "auth-redirect-url", getEnvDefault("AUTH_REDIRECT_URL", ""), "OIDC Redirect URL (required unless auth disabled)")
 		fs.StringVar(&requireSubject, "auth-require-subject", getEnvDefault("AUTH_REQUIRE_SUBJECT", ""), "If set, require this subject to grant access")
 		fs.BoolVar(&basicAuth, "i-am-basic", false, "If enabled, basic auth will be used for the web UI using the owntracks endpoint creds")
@@ -106,7 +106,7 @@ func main() {
 		// https://foursquare.com/developers/apps
 		// redirect to https://<host>/connect/fsqcallback
 		fs.StringVar(&ws.fsqOauthConfig.ClientID, "fsq-client-id", getEnvDefault("FSQ_CLIENT_ID", ""), "Oauth2 Client ID")
-		fs.StringVar(&ws.fsqOauthConfig.ClientSecret, "fsq-client-secret", getEnvDefault("FSQ_CLIENT_SECRET", ""), "Oauth2 Client Secret")
+		fs.StringVar(&ws.fsqOauthConfig.ClientSecret, "fsq-client-secret", "", "Oauth2 Client Secret")
 
 		// https://www.tripit.com/developer
 		fs.BoolVar(&disableTripitSync, "tripit-sync-disabled", false, "Disable background tripit sync")
@@ -120,6 +120,19 @@ func main() {
 
 		ws.smgr = base.smgr
 		ws.store = base.storage
+
+		if v := os.Getenv("SECURE_KEY"); v != "" && secureKeyFlag == "" {
+			secureKeyFlag = v
+		}
+		if v := os.Getenv("OT_PUBLISH_PASSWORD"); v != "" && otPassword == "" {
+			otPassword = v
+		}
+		if v := os.Getenv("AUTH_CLIENT_SECRET"); v != "" && ah.ClientSecret == "" {
+			ah.ClientSecret = v
+		}
+		if v := os.Getenv("FSQ_CLIENT_SECRET"); v != "" && ah.ClientSecret == "" {
+			ws.fsqOauthConfig.ClientSecret = v
+		}
 
 		var errs []string
 
