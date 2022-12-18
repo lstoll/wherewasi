@@ -130,7 +130,7 @@ func main() {
 		if v := os.Getenv("AUTH_CLIENT_SECRET"); v != "" && ah.ClientSecret == "" {
 			ah.ClientSecret = v
 		}
-		if v := os.Getenv("FSQ_CLIENT_SECRET"); v != "" && ah.ClientSecret == "" {
+		if v := os.Getenv("FSQ_CLIENT_SECRET"); v != "" && ws.fsqOauthConfig.ClientSecret == "" {
 			ws.fsqOauthConfig.ClientSecret = v
 		}
 
