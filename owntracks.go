@@ -41,7 +41,7 @@ func (o *owntracksServer) HandlePublish(w http.ResponseWriter, r *http.Request) 
 		// https://github.com/owntracks/ios/issues/580#issuecomment-495276821).
 		// If we get one of these simply do nothing, as there is nothing to
 		// deserialize and no known action we can take
-		o.log.Printf("skipping publish empty body")
+		o.log.Print("skipping publish empty body")
 		return
 	}
 
