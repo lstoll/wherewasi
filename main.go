@@ -133,6 +133,10 @@ func main() {
 
 		var errs []string
 
+		if baseURL == "" {
+			errs = append(errs, "base-url required")
+		}
+
 		if secureKeyFlag == "" {
 			errs = append(errs, "secure-key required")
 		}
@@ -149,16 +153,13 @@ func main() {
 			if ah.Issuer == "" {
 				errs = append(errs, "auth-issuer required")
 			}
-			if ah.Issuer == "" {
+			if ah.ClientID == "" {
 				errs = append(errs, "auth-client-id required")
 			}
-			if ah.Issuer == "" {
+			if ah.ClientSecret == "" {
 				errs = append(errs, "auth-client-secret required")
 			}
-			if ah.Issuer == "" {
-				errs = append(errs, "auth-base-url required")
-			}
-			if ah.Issuer == "" {
+			if ah.RedirectURL == "" {
 				errs = append(errs, "auth-redirect-url required")
 			}
 		}
