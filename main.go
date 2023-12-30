@@ -69,6 +69,7 @@ func main() {
 			disableAuth       bool
 			secureKeyFlag     string
 			basicAuth         bool
+			otListen          string
 			otUsername        string
 			otPassword        string
 			requireSubject    string
@@ -85,6 +86,7 @@ func main() {
 		fs.StringVar(&secureKeyFlag, "secure-key", "", "Key used to encrypt/verify information like cookies")
 		fs.StringVar(&baseURL, "base-url", getEnvDefault("BASE_URL", "http://localhost:8080"), "Base URL this service runs on")
 
+		fs.StringVar(&otListen, "ot-listen", getEnvDefault("OT_LISTEN", ""), "Optional address to listen on for the owntracks publish endpoint.")
 		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
 		fs.StringVar(&otPassword, "ot-password", "", "Password for the owntracks publish endpoint (required)")
 
@@ -197,7 +199,6 @@ func main() {
 
 		mux := http.NewServeMux()
 
-		mux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
 		if disableAuth {
 			mux.Handle("/", ws)
 		} else if basicAuth {
@@ -222,6 +223,25 @@ func main() {
 		}
 
 		var g run.Group
+
+		if otListen == "" {
+			mux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+		} else {
+			otmux := http.NewServeMux()
+			otmux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+			srv := http.Server{Addr: otListen, Handler: otmux}
+
+			g.Add(func() error {
+				l.Printf("owntracks publisher listing on %s", listen)
+				return srv.ListenAndServe()
+			}, func(error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := srv.Shutdown(ctx); err != nil {
+					l.Printf("shutting down owntracks publisher: %v", err)
+				}
+			})
+		}
 
 		if !disable4sqSync {
 			if ws.fsqOauthConfig.ClientID == "" || ws.fsqOauthConfig.ClientSecret == "" {
