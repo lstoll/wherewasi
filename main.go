@@ -131,6 +131,34 @@ func main() {
 			ws.fsqOauthConfig.ClientSecret = v
 		}
 
+		if v, ok := os.LookupEnv("CREDENTIALS_DIRECTORY"); ok {
+			l.Printf("loading credentials from files in directory %s", v)
+
+			if s, err := os.ReadFile(filepath.Join(v, "secure-key")); err == nil {
+				secureKeyFlag = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "ot-publish-password")); err == nil {
+				otPassword = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "auth-client-secret")); err == nil {
+				ah.ClientSecret = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "fsq-client-id")); err == nil {
+				ws.fsqOauthConfig.ClientID = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "fsq-client-secret")); err == nil {
+				ws.fsqOauthConfig.ClientSecret = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "tripit-api-key")); err == nil {
+				ws.tripitAPIKey = strings.TrimSpace(string(s))
+				tpsync.oauthAPIKey = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "tripit-api-secret")); err == nil {
+				ws.tripitAPISecret = strings.TrimSpace(string(s))
+				tpsync.oauthAPISecret = strings.TrimSpace(string(s))
+			}
+		}
+
 		var errs []string
 
 		if secureKeyFlag == "" {
@@ -309,7 +337,6 @@ func main() {
 			}, func(error) {
 				tripitSyncDone <- struct{}{}
 				log.Print("returning tripit shutdown")
-
 			})
 
 		}
@@ -332,7 +359,6 @@ func main() {
 				l.Printf("shutting down main http server: %v", err)
 			}
 			log.Print("returning http shutdown")
-
 		})
 
 		if promListen != "" {
@@ -579,7 +605,7 @@ func (s *secretsManager) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshaling secrets: %s", err)
 	}
-	if err := os.WriteFile(s.path, b, 0600); err != nil {
+	if err := os.WriteFile(s.path, b, 0o600); err != nil {
 		return fmt.Errorf("writing secrets to %s: %v", s.path, err)
 	}
 	return nil
