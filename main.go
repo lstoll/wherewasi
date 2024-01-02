@@ -265,6 +265,13 @@ func main() {
 		}
 
 		if !disableTripitSync {
+			if v := os.Getenv("TRIPIT_API_KEY"); v != "" && ws.tripitAPIKey == "" {
+				ws.tripitAPIKey = v
+			}
+			if v := os.Getenv("TRIPIT_API_SECRET"); v != "" && ws.tripitAPISecret == "" {
+				ws.tripitAPISecret = v
+			}
+
 			if ws.tripitAPIKey == "" || ws.tripitAPISecret == "" {
 				l.Fatal("tripit oauth1 config not set on ws")
 			}
