@@ -152,7 +152,7 @@ func main() {
 			if ah.Issuer == "" {
 				errs = append(errs, "auth-client-id required")
 			}
-			if ah.Issuer == "" {
+			if ah.ClientSecret == "" {
 				errs = append(errs, "auth-client-secret required")
 			}
 			if ah.Issuer == "" {
