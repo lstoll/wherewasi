@@ -10,12 +10,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/gorilla/sessions"
 	"github.com/oklog/run"
 	oidcm "github.com/pardot/oidc/middleware"
 	"github.com/prometheus/client_golang/prometheus"
@@ -214,8 +216,7 @@ func main() {
 		if _, err := io.ReadFull(krdr, scEncryptKey); err != nil {
 			log.Fatal(err)
 		}
-		ah.SessionAuthenticationKey = scHashKey
-		ah.SessionEncryptionKey = scEncryptKey
+		ah.SessionStore = sessions.NewCookieStore(scHashKey, scEncryptKey)
 
 		// Copy fields around as needed
 		ah.BaseURL = baseURL
@@ -226,6 +227,15 @@ func main() {
 		ots.store = base.storage
 
 		mux := http.NewServeMux()
+
+		mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+			if _, err := base.storage.db.ExecContext(r.Context(), `SELECT 1`); err != nil {
+				slog.ErrorContext(r.Context(), "error communicating with db in healthz", "err", err)
+				http.Error(w, "Internal Error", http.StatusInternalServerError)
+				return
+			}
+			_, _ = fmt.Fprint(w, "OK")
+		})
 
 		if disableAuth {
 			mux.Handle("/", ws)
