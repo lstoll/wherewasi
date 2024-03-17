@@ -27,8 +27,8 @@ type tripitSyncCommand struct {
 }
 
 func (t *tripitSyncCommand) AddFlags(fs *flag.FlagSet) {
-	fs.StringVar(&t.oauthAPIKey, "tripit-api-key", getEnvDefault("TRIPIT_API_KEY", ""), "Oauth1 API Key for Tripit")
-	fs.StringVar(&t.oauthAPISecret, "tripit-api-secret", getEnvDefault("TRIPIT_API_SECRET", ""), "Oauth1 API Secret for Tripit")
+	fs.StringVar(&t.oauthAPIKey, "tripit-api-key", "", "Oauth1 API Key for Tripit")
+	fs.StringVar(&t.oauthAPISecret, "tripit-api-secret", "", "Oauth1 API Secret for Tripit")
 }
 
 func (t *tripitSyncCommand) Validate() error {

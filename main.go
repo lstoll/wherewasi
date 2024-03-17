@@ -71,6 +71,7 @@ func main() {
 			disableAuth       bool
 			secureKeyFlag     string
 			basicAuth         bool
+			otListen          string
 			otUsername        string
 			otPassword        string
 			requireSubject    string
@@ -87,6 +88,7 @@ func main() {
 		fs.StringVar(&secureKeyFlag, "secure-key", "", "Key used to encrypt/verify information like cookies")
 		fs.StringVar(&baseURL, "base-url", getEnvDefault("BASE_URL", "http://localhost:8080"), "Base URL this service runs on")
 
+		fs.StringVar(&otListen, "ot-listen", getEnvDefault("OT_LISTEN", ""), "Optional address to listen on for the owntracks publish endpoint.")
 		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
 		fs.StringVar(&otPassword, "ot-password", "", "Password for the owntracks publish endpoint (required)")
 
@@ -133,6 +135,34 @@ func main() {
 			ws.fsqOauthConfig.ClientSecret = v
 		}
 
+		if v, ok := os.LookupEnv("CREDENTIALS_DIRECTORY"); ok {
+			l.Printf("loading credentials from files in directory %s", v)
+
+			if s, err := os.ReadFile(filepath.Join(v, "secure-key")); err == nil {
+				secureKeyFlag = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "ot-publish-password")); err == nil {
+				otPassword = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "auth-client-secret")); err == nil {
+				ah.ClientSecret = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "fsq-client-id")); err == nil {
+				ws.fsqOauthConfig.ClientID = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "fsq-client-secret")); err == nil {
+				ws.fsqOauthConfig.ClientSecret = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "tripit-api-key")); err == nil {
+				ws.tripitAPIKey = strings.TrimSpace(string(s))
+				tpsync.oauthAPIKey = strings.TrimSpace(string(s))
+			}
+			if s, err := os.ReadFile(filepath.Join(v, "tripit-api-secret")); err == nil {
+				ws.tripitAPISecret = strings.TrimSpace(string(s))
+				tpsync.oauthAPISecret = strings.TrimSpace(string(s))
+			}
+		}
+
 		var errs []string
 
 		if secureKeyFlag == "" {
@@ -154,7 +184,7 @@ func main() {
 			if ah.Issuer == "" {
 				errs = append(errs, "auth-client-id required")
 			}
-			if ah.Issuer == "" {
+			if ah.ClientSecret == "" {
 				errs = append(errs, "auth-client-secret required")
 			}
 			if ah.Issuer == "" {
@@ -207,7 +237,6 @@ func main() {
 			_, _ = fmt.Fprint(w, "OK")
 		})
 
-		mux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
 		if disableAuth {
 			mux.Handle("/", ws)
 		} else if basicAuth {
@@ -232,6 +261,25 @@ func main() {
 		}
 
 		var g run.Group
+
+		if otListen == "" {
+			mux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+		} else {
+			otmux := http.NewServeMux()
+			otmux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+			srv := http.Server{Addr: otListen, Handler: otmux}
+
+			g.Add(func() error {
+				l.Printf("owntracks publisher listing on %s", listen)
+				return srv.ListenAndServe()
+			}, func(error) {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if err := srv.Shutdown(ctx); err != nil {
+					l.Printf("shutting down owntracks publisher: %v", err)
+				}
+			})
+		}
 
 		if !disable4sqSync {
 			if ws.fsqOauthConfig.ClientID == "" || ws.fsqOauthConfig.ClientSecret == "" {
@@ -275,6 +323,13 @@ func main() {
 		}
 
 		if !disableTripitSync {
+			if v := os.Getenv("TRIPIT_API_KEY"); v != "" && ws.tripitAPIKey == "" {
+				ws.tripitAPIKey = v
+			}
+			if v := os.Getenv("TRIPIT_API_SECRET"); v != "" && ws.tripitAPISecret == "" {
+				ws.tripitAPISecret = v
+			}
+
 			if ws.tripitAPIKey == "" || ws.tripitAPISecret == "" {
 				l.Fatal("tripit oauth1 config not set on ws")
 			}
@@ -312,7 +367,6 @@ func main() {
 			}, func(error) {
 				tripitSyncDone <- struct{}{}
 				log.Print("returning tripit shutdown")
-
 			})
 
 		}
@@ -335,7 +389,6 @@ func main() {
 				l.Printf("shutting down main http server: %v", err)
 			}
 			log.Print("returning http shutdown")
-
 		})
 
 		if promListen != "" {
@@ -582,7 +635,7 @@ func (s *secretsManager) Save() error {
 	if err != nil {
 		return fmt.Errorf("marshaling secrets: %s", err)
 	}
-	if err := os.WriteFile(s.path, b, 0600); err != nil {
+	if err := os.WriteFile(s.path, b, 0o600); err != nil {
 		return fmt.Errorf("writing secrets to %s: %v", s.path, err)
 	}
 	return nil
