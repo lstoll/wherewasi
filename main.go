@@ -323,11 +323,21 @@ func main() {
 		}
 
 		if !disableTripitSync {
-			if v := os.Getenv("TRIPIT_API_KEY"); v != "" && ws.tripitAPIKey == "" {
-				ws.tripitAPIKey = v
+			if v := os.Getenv("TRIPIT_API_KEY"); v != "" {
+				if ws.tripitAPIKey == "" {
+					ws.tripitAPIKey = v
+				}
+				if tpsync.oauthAPIKey == "" {
+					tpsync.oauthAPIKey = v
+				}
 			}
-			if v := os.Getenv("TRIPIT_API_SECRET"); v != "" && ws.tripitAPISecret == "" {
-				ws.tripitAPISecret = v
+			if v := os.Getenv("TRIPIT_API_SECRET"); v != "" {
+				if ws.tripitAPISecret == "" {
+					ws.tripitAPISecret = v
+				}
+				if tpsync.oauthAPISecret == "" {
+					tpsync.oauthAPISecret = v
+				}
 			}
 
 			if ws.tripitAPIKey == "" || ws.tripitAPISecret == "" {
