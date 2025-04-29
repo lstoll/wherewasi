@@ -89,8 +89,8 @@ func main() {
 		fs.StringVar(&baseURL, "base-url", getEnvDefault("BASE_URL", "http://localhost:8080"), "Base URL this service runs on")
 
 		fs.StringVar(&otListen, "ot-listen", getEnvDefault("OT_LISTEN", ""), "Optional address to listen on for the owntracks publish endpoint.")
-		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required)")
-		fs.StringVar(&otPassword, "ot-password", "", "Password for the owntracks publish endpoint (required)")
+		fs.StringVar(&otUsername, "ot-username", getEnvDefault("OT_PUBLISH_USERNAME", ""), "Username for the owntracks publish endpoint (required unless auth-disabled is set)")
+		fs.StringVar(&otPassword, "ot-password", "", "Password for the owntracks publish endpoint (required unless auth-disabled is set)")
 
 		fs.StringVar(&ah.Issuer, "auth-issuer", getEnvDefault("AUTH_ISSUER", ""), "OIDC Issuer (required unless auth disabled)")
 		fs.StringVar(&ah.ClientID, "auth-client-id", getEnvDefault("AUTH_CLIENT_ID", ""), "OIDC Client ID (required unless auth disabled)")
@@ -169,11 +169,11 @@ func main() {
 			errs = append(errs, "secure-key required")
 		}
 
-		if otUsername == "" {
+		if otUsername == "" && !disableAuth {
 			errs = append(errs, "ot-username required")
 		}
 
-		if otPassword == "" {
+		if otPassword == "" && !disableAuth {
 			errs = append(errs, "ot-password required")
 		}
 
@@ -263,10 +263,19 @@ func main() {
 		var g run.Group
 
 		if otListen == "" {
-			mux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+			if disableAuth {
+				mux.Handle("/pub", http.HandlerFunc(ots.HandlePublish))
+			} else {
+				mux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+			}
 		} else {
 			otmux := http.NewServeMux()
-			otmux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+			if disableAuth {
+				otmux.Handle("/pub", http.HandlerFunc(ots.HandlePublish))
+			} else {
+				otmux.Handle("/pub", wrapBasicAuth(otUsername, otPassword, http.HandlerFunc(ots.HandlePublish)))
+			}
+
 			srv := http.Server{Addr: otListen, Handler: otmux}
 
 			g.Add(func() error {
